@@ -41,13 +41,15 @@ viewer.fpControls.keys.DOWN.push('Q'.charCodeAt(0));
 const tools = createTools({ viewer, el: (...a) => el(...a), toast: (m) => toast(m), activeId: () => state.activeId, onChange: () => renderToolbar(), onMeasure: (kind) => ev('measure', { kind }) });
 window.tools = tools; // console access, like window.viewer
 const gizmo = createGizmo($('#gizmo'), viewer, (dir) => snapView(dir));
-const tour = createTour({ viewer, el: (...a) => el(...a), root: $('#tour'), onEvent: (n, p) => ev(n, p), onEnd: () => renderInfo(), onPrefetch: (s) => prefetchView(s) });
+const tour = createTour({ viewer, el: (...a) => el(...a), root: $('#tour'), onEvent: (n, p) => ev(n, p), onEnd: () => renderInfo(), onPrefetch: (s) => prefetchView(s),
+  viewFull: () => { const pc = viewer.scene.pointclouds.find((p) => p.visible); return !!pc && pc.numVisiblePoints >= 0.97 * viewer.getPointBudget(); } });
 
 // ---------- prefetch: load another view's detail in the background ----------
 // After each rendered frame, run Potree's visibility pass for a second camera at the target view: that
 // queues its missing nodes for download. The next frame's update recomputes visibility for the real
-// camera before drawing, so the screen is unaffected. Throttled to 4x/s.
-let pfCam = null, pfStop = null, pfLast = 0;
+// camera before drawing, so the screen is unaffected. It runs every frame (only while touring), after the
+// frame, so it claims free download slots before the next frame's pass for the real camera does.
+let pfCam = null, pfStop = null;
 function prefetchView(stop) {
   pfStop = stop;
   if (!stop) return;
@@ -59,8 +61,7 @@ function prefetchView(stop) {
   pfCam.updateMatrixWorld(true);
 }
 viewer.addEventListener('render.pass.end', () => {
-  if (!pfStop || performance.now() - pfLast < 250) return;
-  pfLast = performance.now();
+  if (!pfStop) return;
   Potree.updatePointClouds(viewer.scene.pointclouds.filter((p) => p.visible), pfCam, viewer.renderer);
 });
 window.tour = tour;

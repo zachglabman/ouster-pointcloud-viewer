@@ -96,10 +96,12 @@ the new domain (same paths) and redeploy.
 `"tour"` in a dataset (datasets.json) lists stops `{ name, caption, position, target, hold }`. **▶ Take the
 tour** in the info card flies between them (eased, arcing over long legs, slow drift while a caption shows).
 ← / → step, Space pauses, any drag/scroll/other key hands control back where the camera is.
-`#d=<id>&tour` opens straight into it. Once a stop is sharp, the next stop's detail downloads in the
-background (a second-camera visibility pass after each frame). A "Refining detail…" pill shows while the
+`#d=<id>&tour` opens straight into it. Bandwidth goes where the camera is heading: during a flight the
+destination's detail downloads first, and once a stop is sharp, the next stop's (a second-camera visibility
+pass after each frame). A stop never moves on before it has loaded (full point budget, or loading quiet
+for 1.5 s; 25 s cap), and holds still until then. A "Refining detail…" pill shows while the
 current view is still loading. Author stops in the dev viewer with **P** (copies camera JSON).
-Events: `tour_start`, `tour_stop_reached`, `tour_stop` (`at`, `reason`), `tour_complete`. Code: `src/tour.js`.
+Events: `tour_start`, `tour_stop_reached`, `tour_stop_loaded` (`seconds` waited), `tour_stop` (`at`, `reason`), `tour_complete`. Code: `src/tour.js`.
 
 ## Potree
 

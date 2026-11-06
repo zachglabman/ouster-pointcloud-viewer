@@ -4,15 +4,16 @@
 // on long legs so the camera arcs over the scene instead of cutting through it. At each stop the camera
 // drifts in a slow orbit while the caption is up. Any pointer/wheel/key input on the scene ends the tour
 // and leaves the visitor where the camera is (the orbit pivot is the current stop's target).
-// Once a stop's detail has loaded, the next stop's nodes are requested in the background (onPrefetch).
+// Bandwidth goes where the camera is heading: during a flight the destination's nodes are requested first
+// (onPrefetch); once a stop has loaded, the next stop's. A stop never moves on before it has loaded (25 s cap).
 
 const ease = (t) => t * t * t * (t * (t * 6 - 15) + 10);
 const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
-export function createTour({ viewer, el, root, onEvent = () => {}, onEnd = () => {}, onPrefetch = () => {} }) {
+export function createTour({ viewer, el, root, onEvent = () => {}, onEnd = () => {}, onPrefetch = () => {}, viewFull = () => false }) {
   let stops = null, i = 0, phase = 'idle', t = 0, legDur = 0, from = null, paused = false, dsId = null;
-  let drift = 0, wait = 0, quiet = 0;
+  let wait = 0, quiet = 0, loaded = false, settleAt = 0;
 
   const view = () => viewer.scene.view;
   const cur = () => {
@@ -26,7 +27,7 @@ export function createTour({ viewer, el, root, onEvent = () => {}, onEnd = () =>
   }
 
   function legTo(k) {
-    i = k; from = cur(); t = 0; drift = 0; onPrefetch(null);
+    i = k; from = cur(); t = 0; onPrefetch(null);
     const d = Math.max(dist(from.position, stops[k].position), dist(from.target, stops[k].target) * 0.7);
     legDur = Math.min(9, Math.max(3, 1.6 + d / 70));         // seconds: ~3 s nearby, up to 9 s across a site
     phase = 'fly';
@@ -65,27 +66,29 @@ export function createTour({ viewer, el, root, onEvent = () => {}, onEnd = () =>
       const d = dist(from.position, s.position);
       pos[2] += Math.sin(Math.PI * t) * Math.min(80, d * 0.12);  // arc up on long legs
       place(pos, lerp3(from.target, s.target, e));
-      if (t >= 1) { phase = 'hold'; t = 0; wait = 0; quiet = 0; onEvent('tour_stop_reached', { at: i + 1, name: s.name }); render(); }
+      // Download the destination's detail during the flight, ahead of the views passed on the way.
+      onPrefetch(s);
+      if (t >= 1) { phase = 'hold'; t = 0; wait = 0; quiet = 0; loaded = false; onPrefetch(null); onEvent('tour_stop_reached', { at: i + 1, name: s.name }); render(); }
     } else if (phase === 'hold') {
-      // The hold clock runs once the stop's detail has streamed in (or after 10 s regardless), so every
-      // caption is read over a sharp view rather than coarse points.
-      // Loading pauses briefly between batches, so "settled" = nothing loading for 1.5 s straight.
-      wait += dt; quiet = Potree.numNodesLoading === 0 ? quiet + dt : 0;
-      if (quiet > 1.5 || wait > 10) {
-        t += dt;
-        // This stop is sharp: spend the rest of the hold downloading the next stop's detail.
-        if (i + 1 < stops.length) onPrefetch(stops[i + 1]);
-      }
-      // Slow drift around the target: ~10 degrees over the hold, eased at the start.
+      // A stop moves on only when its caption time has passed AND its detail has finished loading
+      // ("loaded" = the view has its full point budget, or nothing loading for 1.5 s straight; loading
+      // pauses briefly between batches, and Potree keeps a few downloads going once the budget is full), with a
+      // 25 s safety cap. The camera holds still until loaded (no drift = no new detail to fetch), then
+      // drifts slowly while the rest of the caption time runs and the next stop downloads.
+      wait += dt; t += dt;
+      quiet = Potree.numNodesLoading === 0 ? quiet + dt : 0;
+      if (!loaded && (quiet > 1.5 || viewFull())) { loaded = true; settleAt = t; onEvent('tour_stop_loaded', { at: i + 1, seconds: Math.round(wait) }); }
+      if (loaded && i + 1 < stops.length) onPrefetch(stops[i + 1]);
       const hold = s.hold ?? 6;
-      const a = (s.drift ?? 0.03) * Math.min(1, t / 1.5) * dt;
-      drift += a;
-      const v = view(), p = s.target;
-      const dx = v.position.x - p[0], dy = v.position.y - p[1];
-      v.position.x = p[0] + dx * Math.cos(a) - dy * Math.sin(a);
-      v.position.y = p[1] + dx * Math.sin(a) + dy * Math.cos(a);
-      v.lookAt(...p);
-      if (t >= hold) next();
+      if (loaded) {
+        const a = (s.drift ?? 0.03) * Math.min(1, (t - settleAt) / 1.5) * dt;   // eased start
+        const v = view(), p = s.target;
+        const dx = v.position.x - p[0], dy = v.position.y - p[1];
+        v.position.x = p[0] + dx * Math.cos(a) - dy * Math.sin(a);
+        v.position.y = p[1] + dx * Math.sin(a) + dy * Math.cos(a);
+        v.lookAt(...p);
+      }
+      if (t >= hold && (loaded ? t - settleAt >= 2.5 : wait > 25)) next();   // >= 2.5 s on the sharp view
     }
   }
 
