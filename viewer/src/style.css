@@ -186,3 +186,33 @@ body.adv #gizmo, body.adv #measures { right: 304px; }
 
 /* Potree sizes the canvas in render pixels (scaleFactor x CSS); pin its displayed size to the container. */
 #potree_render_area canvas { width: 100% !important; height: 100% !important; }
+
+/* ---- guided tour ---- */
+#info .actions { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 8px; } /* tour left of the CTA, one row */
+#info .actions .cta { align-self: auto; white-space: nowrap; padding: 8px 12px; font-size: 13px; }
+#info .actions .tour-btn { white-space: nowrap; padding: 7px 11px; font-size: 13px; flex: none; }
+.tour-btn {
+  background: transparent; color: var(--text); border: 1px solid var(--soft); border-radius: 8px;
+  padding: 7px 13px; cursor: pointer; font-weight: 600;
+}
+.tour-btn:hover { border-color: var(--accent); color: #fff; }
+#tour {
+  width: 440px; max-width: calc(100vw - 32px); box-sizing: border-box;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 8px; backdrop-filter: blur(6px);
+}
+#tour[hidden] { display: none; }
+#tour .tour-head { display: flex; align-items: center; gap: 10px; }
+#tour .tour-step { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#tour strong { font-size: 15px; font-weight: 650; flex: 1; }
+#tour .tour-ctl { display: flex; gap: 2px; }
+#tour .tour-ctl .icon { font-size: 15px; padding: 4px 7px; }
+#tour .tour-ctl .icon:disabled { opacity: 0.3; cursor: default; }
+#tour p { margin: 0; color: var(--soft); font-size: 13px; line-height: 1.5; }
+.tour-dots { display: flex; gap: 6px; }
+.tour-dot { width: 22px; height: 4px; border-radius: 2px; border: 0; padding: 0; background: var(--line); cursor: pointer; }
+.tour-dot.done { background: var(--soft); }
+.tour-dot.on { background: var(--accent); }
+@media (max-width: 640px) { #tour { width: auto; } }
+#tour:not([hidden]) + #hint { display: none; } /* the caption card replaces the controls hint while touring */
+@media (max-width: 400px) { #info .actions { flex-wrap: wrap; } }

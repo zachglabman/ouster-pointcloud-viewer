@@ -84,6 +84,14 @@ canopy sky fringe is still caught. Viansa: 6.2% → 2.1% hidden. Drone captures 
 
 `clean/run_ggp.py` is the original Golden Gate Park run (same labels, PDAL outlier filter, fixed grid).
 
+## Guided tour
+
+`"tour"` in a dataset (datasets.json) lists stops `{ name, caption, position, target, hold }`. **▶ Take the
+tour** in the info card flies between them (eased, arcing over long legs, slow drift while a caption shows).
+← / → step, Space pauses, any drag/scroll/other key hands control back where the camera is.
+`#d=<id>&tour` opens straight into it. Author stops in the dev viewer with **P** (copies camera JSON).
+Events: `tour_start`, `tour_stop_reached`, `tour_stop` (`at`, `reason`), `tour_complete`. Code: `src/tour.js`.
+
 ## Potree
 
 The viewer uses Potree 1.8.2 with a small shader patch (reflectivity and world-Z discard filters, tagged `[ggp]`). To rebuild it:
