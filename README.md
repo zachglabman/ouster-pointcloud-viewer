@@ -48,13 +48,29 @@ sh hosting/gcs-setup.sh site            # build + upload viewer/dist to gs://ous
 
 ## Add a dataset
 
-1. Convert to COPC (keep all dimensions):
-   - many LAS files: `untwine -i <dir-of-las> -o out/<id>.copc.laz --temp_dir tmp`
-   - one PLY/LAS: a PDAL pipeline ending in `writers.copc` (see `sky/viansa.pipeline.json`; float 0–1 PLY colors must be scaled ×65535).
-   - Optional noise classes: `filters.outlier` (statistical, mean_k 12, multiplier 3) + `filters.elm` (cell 10, threshold 1) mark Classification 7; set `"noiseClassified": true`.
-2. Upload: `gcloud storage cp out/<id>.copc.laz gs://ouster-pointcloud-viewer/pointclouds/ --content-type=application/vnd.laszip+copc --cache-control="public, max-age=31536000, immutable"`
-3. Add an entry to `viewer/public/datasets.json` (copy an existing one). Fly to good spots and press **P** to copy viewpoint JSON. Add a 176×120 `thumbs/<id>.jpg`.
-4. `sh hosting/gcs-setup.sh site`.
+```sh
+PY=/opt/homebrew/Caskroom/miniforge/base/envs/pc/bin/python
+# 1. clean + convert: any LAS/LAZ/COPC/PLY -> out/<id>.copc.laz + out/<id>.dataset.json (every point kept)
+nohup $PY -I clean/clean_cloud.py path/to/input out/<id> --id <id> > out/<id>.clean.out 2>&1 &
+caffeinate -i -w $! &
+# 2. upload (refuses to overwrite: data is cached for a year, so a new version needs a new name)
+sh hosting/gcs-setup.sh publish out/<id>.copc.laz
+# 3. paste out/<id>.dataset.json into viewer/public/datasets.json, fill in the copy, add thumbs/<id>.jpg (176x120)
+# 4. fly to good spots in the dev viewer, press P to copy viewpoint JSON, then
+sh hosting/gcs-setup.sh site
+```
+
+**Cleaning** classifies instead of deleting, and the viewer hides the classes (Clean button, Advanced → Cleaning):
+
+| Class | Meaning | Detector |
+|---|---|---|
+| 7 | floating noise (air, below ground) | `filters.outlier` statistical (mean_k 12, ×3) + `filters.elm` (10 m, 1) |
+| 65–71 | color speckle, 8 strength bands (score // 32) | `clean/speckle.py`: brighter and differently colored than the ~1.5 m neighborhood |
+
+Inputs over 40 M points are processed in 100 m tiles with a 3 m overlap and merged with untwine; the
+tool checks the point count matches the source exactly. Budget ~10 min per 33 M-point tile per worker
+and ~7 GB RAM per worker (3 workers on a 24 GB Mac; Golden Gate Park took ~3 h).
+`clean/run_ggp.py` is the original Golden Gate Park run (same algorithm, fixed grid).
 
 ## Potree
 

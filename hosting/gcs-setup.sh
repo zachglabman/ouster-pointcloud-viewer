@@ -1,7 +1,8 @@
 #!/bin/sh
 # Step 5 on Google Cloud Storage.
 #   sh gcs-setup.sh bucket    # create private bucket + CORS (safe, reversible)
-#   sh gcs-setup.sh upload    # upload out/*.copc.laz
+#   sh gcs-setup.sh upload    # upload out/*.copc.laz (all of them)
+#   sh gcs-setup.sh publish F # upload ONE data file F (new name per version: cached 1 year) + range check
 #   sh gcs-setup.sh site      # build the viewer and upload dist/ to gs://$BUCKET/viewer/
 #   sh gcs-setup.sh public    # grant allUsers objectViewer (makes the data world-readable)
 #   sh gcs-setup.sh check     # range-request test (expects 206 + CORS header)
@@ -28,6 +29,19 @@ case "${1:-}" in
         --cache-control="public, max-age=31536000, immutable"
     done
     gcloud storage ls -l "gs://$BUCKET/$PREFIX/"
+    ;;
+  publish)
+    F="${2:?usage: gcs-setup.sh publish path/to/name.copc.laz}"
+    N="$(basename "$F")"
+    if gcloud storage ls "gs://$BUCKET/$PREFIX/$N" >/dev/null 2>&1; then
+      echo "gs://$BUCKET/$PREFIX/$N already exists. Data is cached for a year: publish a new version name (e.g. ${N%.copc.laz}-v2.copc.laz)."; exit 1
+    fi
+    gcloud storage cp "$F" "gs://$BUCKET/$PREFIX/$N" \
+      --content-type=application/vnd.laszip+copc --cache-control="public, max-age=31536000, immutable"
+    L=$(stat -f %z "$F"); R=$(gcloud storage ls -l "gs://$BUCKET/$PREFIX/$N" | awk 'NR==1{print $1}')
+    [ "$L" = "$R" ] && echo "size OK ($L bytes)" || { echo "SIZE MISMATCH local $L remote $R"; exit 1; }
+    sh "$0" check "$N"
+    echo "url: $URL_BASE/$N"
     ;;
   site)
     # Viewer: build, then upload dist/ to gs://$BUCKET/viewer/.
@@ -58,5 +72,5 @@ case "${1:-}" in
   teardown)
     gcloud storage rm -r "gs://$BUCKET"
     ;;
-  *) sed -n 2,9p "$0"; exit 1 ;;
+  *) sed -n 2,10p "$0"; exit 1 ;;
 esac
