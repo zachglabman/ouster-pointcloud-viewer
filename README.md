@@ -6,8 +6,8 @@ Browser viewer for large Ouster OS1 Max point clouds, built on Potree 1.8.2 and 
 
 | Dataset | Capture | Points | File |
 |---|---|---|---|
-| Golden Gate Park, San Francisco | Drone, OS1 Max | 1.41 B | `pointclouds/ggp.copc.laz` (13.6 GB) |
-| Viansa Winery, Sonoma | Walking, OS1 Max | 7.59 M | `pointclouds/viansa.copc.laz` (83 MB) |
+| Golden Gate Park, San Francisco | Drone, OS1 Max | 1.41 B | `pointclouds/ggp-v2.copc.laz` (13.8 GB) |
+| Viansa Winery, Sonoma | Walking, OS1 Max | 7.59 M | `pointclouds/viansa-v2.copc.laz` (83 MB) |
 
 ## Layout
 
@@ -75,8 +75,12 @@ Viansa: 20 s. Golden Gate Park would now take roughly 15–25 min (the original 
 Each run writes `out/<id>.qa.png` and `out/<id>.qa.json`: before / flagged (red) / cleaned renders of the
 densest, a typical, and the most-flagged area, plus class shares. Status `hold` (noise > 2%, speckle > 8%,
 or a sampled area > 25% flagged) makes `gcs-setup.sh publish` refuse until you've looked
-(`FORCE=1` to publish anyway). Known limit: on walking captures the speckle score also thins the edges of
-bright surfaces (sand paths next to plants); check the PNG.
+(`FORCE=1` to publish anyway).
+
+Use `--capture walk` for ground-level captures: each point is compared with the best-matching nearby
+surface patch instead of the neighborhood average, so narrow bright ground next to dense plants (sand
+paths, curbs, small white structures) isn't flagged; sky-colored points still get the average test, so
+canopy sky fringe is still caught. Viansa: 6.2% → 2.1% hidden. Drone captures keep the default.
 
 `clean/run_ggp.py` is the original Golden Gate Park run (same labels, PDAL outlier filter, fixed grid).
 

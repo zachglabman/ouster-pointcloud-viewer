@@ -8,6 +8,10 @@ and the viewer hides them (Clean button + Advanced sliders), so cleaning is reve
                                          neighborhood (lidar/camera misregistration paints edges with
                                          sky/roof/road pixels). Band b = scores 32b..32b+31; the viewer's
                                          default strength (65%) hides bands 3..7 (score >= 96).
+                                         --capture walk compares each point with the best-matching nearby
+                                         surface patch instead of the neighborhood mean, so narrow bright
+                                         ground (sand paths, curbs) next to dense plants isn't flagged;
+                                         sky-colored points still use the mean. drone (default) = mean.
 
 Input: anything PDAL reads (.las/.laz/.copc.laz/.ply). PLY float colors 0..1 and 8-bit colors are
 rescaled to LAS 16-bit. Small inputs (< --whole points) are cleaned in one pass; larger ones are read
@@ -17,7 +21,7 @@ Non-COPC large inputs are converted to COPC with untwine first.
 
 Output: <out>.copc.laz (LAS 1.4 PDRF 7, 0.01 m) + <out>.dataset.json (a datasets.json entry to paste).
 
-  python clean_cloud.py IN OUT_BASENAME [--id ID] [--tile 100] [--buffer 3] [--workers 3] [--whole 40e6]
+  python clean_cloud.py IN OUT_BASENAME [--id ID] [--tile 100] [--buffer 3] [--workers 2] [--whole 40e6] [--capture drone|walk]
   e.g. python clean_cloud.py ~/Desktop/site.ply out/site --id site
 
 Also writes <out>.qa.json + <out>.qa.png: before / flagged / after renders of sample tiles and the
@@ -64,7 +68,7 @@ def color_scale(a):
     if mx <= 255: return 257.0       # 8-bit
     return 1.0
 
-def classify(a, scale):
+def classify(a, scale, walk=False):
     """Run speckle scoring on non-noise points and write classes 65..71 in place. Returns the array."""
     cls = a['Classification'].astype(np.uint8).copy()
     cls[(cls >= 65) & (cls <= 71)] = 0       # re-cleaning an already-cleaned file: rescore speckle from scratch
@@ -75,7 +79,7 @@ def classify(a, scale):
         xyz = np.stack([a['X'][ok], a['Y'][ok], a['Z'][ok]], 1)
         rgb = np.stack([a['Red'][ok], a['Green'][ok], a['Blue'][ok]], 1).astype(np.float64) * (scale / 65535.0)
         q = np.zeros(len(a), np.uint8)
-        q[ok], _ = speckle_score(xyz, np.clip(rgb, 0, 1))
+        q[ok], _ = speckle_score(xyz, np.clip(rgb, 0, 1), patch=walk)
         band = q // 32
         sp = ok & (band >= 1)
         cls[sp] = 64 + band[sp]
@@ -185,7 +189,7 @@ def tile_job(args):
         if p.execute() == 0:
             open(done, 'w').write('0'); return 0
         a = p.arrays[0]
-        a = classify(a, G['scale'])          # one scale for all tiles: a dark tile could look 8-bit
+        a = classify(a, G['scale'], G['walk'])          # one scale for all tiles: a dark tile could look 8-bit
         a = a[(a['X'] >= x0) & (a['X'] < x0 + T) & (a['Y'] >= y0) & (a['Y'] < y0 + T)]
         if len(a):
             a = to_las16(a, G['scale'])
@@ -204,6 +208,7 @@ def main():
     ap.add_argument('src'); ap.add_argument('out', help='output basename, e.g. out/site')
     ap.add_argument('--id'); ap.add_argument('--tile', type=float, default=100); ap.add_argument('--buffer', type=float, default=3)
     ap.add_argument('--workers', type=int, default=2); ap.add_argument('--whole', type=float, default=40e6)
+    ap.add_argument('--capture', choices=('drone', 'walk'), default='drone', help='walk: own-surface speckle reference (ground-level captures)')
     a = ap.parse_args()
     out_copc = a.out + '.copc.laz'; logf = a.out + '.clean.log'
     os.makedirs(os.path.dirname(os.path.abspath(out_copc)), exist_ok=True)
@@ -218,7 +223,7 @@ def main():
         p.execute(); arr = p.arrays[0]
         scale = color_scale(arr) or 1.0
         log(logf, f'whole-file pass, color scale x{scale:g}')
-        arr = to_las16(classify(arr, scale), scale)
+        arr = to_las16(classify(arr, scale, a.capture == 'walk'), scale)
         write(arr, out_copc, copc=True)
         n_out = len(arr)
     else:
@@ -240,7 +245,7 @@ def main():
         probe = pdal.Pipeline(json.dumps([{'type': 'readers.copc', 'filename': src, 'resolution': 50}])); probe.execute()
         scale = color_scale(probe.arrays[0]) or 1.0
         log(logf, f'{len(jobs)} tiles of {T:g} m (+{a.buffer:g} m buffer), {a.workers} workers, color scale x{scale:g}')
-        g = dict(src=src, tdir=tdir, tile=T, buf=a.buffer, log=logf, scale=scale)
+        g = dict(src=src, tdir=tdir, tile=T, buf=a.buffer, log=logf, scale=scale, walk=a.capture == 'walk')
         with Pool(a.workers, initializer=init, initargs=(g,), maxtasksperchild=1) as pool:
             n_out = sum(pool.map(tile_job, jobs, chunksize=1))
         if n_out != n_src:

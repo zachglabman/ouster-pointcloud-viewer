@@ -129,7 +129,7 @@
     {
       "id": "viansa",
       "name": "Viansa Winery",
-      "url": "https://storage.googleapis.com/ouster-pointcloud-viewer/pointclouds/viansa.copc.laz",
+      "url": "https://storage.googleapis.com/ouster-pointcloud-viewer/pointclouds/viansa-v2.copc.laz",
       "thumbnail": "thumbs/viansa.jpg",
       "title": "Viansa Winery",
       "description": "Point cloud of Viansa Winery in Sonoma, California, captured on a walk with an Ouster OS1 Max. Orbit the hilltop, fly between the buildings and vines, and zoom down to individual points.",
@@ -187,6 +187,7 @@
       "pointBudget": 8000000,
       "maxFlySpeed": 60,
       "noiseClassified": true,
+      "speckle": { "default": 65 },
       "skyFilter": {
         "default": 75
       },
