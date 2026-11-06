@@ -46,7 +46,7 @@
       ],
       "tour": [
         {"name": "Golden Gate Park from above", "chip": "1.41B points · one flight", "caption": "One drone flight, 1.41 billion points. OS1 Max captures up to 10.4 million points per second across 256 channels, with color from the sensor itself.", "position": [702, -1099, 639], "target": [258, -300, -45], "hold": 6},
-        {"name": "Through the canopy", "chip": "Dual returns", "caption": "Each pulse can register two returns, the treetop and what’s beneath it, so the cloud holds crowns, gaps, and the ground under them.", "position": [-230, -520, 40], "target": [-50, -300, -52], "hold": 6},
+        {"name": "Through the canopy", "chip": "256 channels", "caption": "256 channels sweep the canopy from many angles in a single pass, so the cloud holds crowns, the gaps between them, and the ground underneath.", "position": [-230, -520, 40], "target": [-50, -300, -52], "hold": 6},
         {"name": "Trees, up close", "chip": "0.09° beam", "caption": "A narrow beam keeps the laser spot small enough to split single trees into crowns, branches, and trunks. Switch to X-ray in Display to see through.", "position": [320, -250, 5], "target": [245, -150, -42], "hold": 7},
         {"name": "Where the park meets the city", "chip": "200 m range", "caption": "200 m of range on dark targets puts forest, streets, and rooftops in the same flight from the same altitude.", "position": [240, -480, 30], "target": [430, -330, -44], "hold": 6},
         {"name": "City blocks in plan", "chip": "±0.25 cm precision", "caption": "Precision down to ±0.25 cm keeps rooflines and curbs crisp enough to measure. Use Measure to check a roof edge or a street width.", "position": [600, -380, 210], "target": [600, -300, -42], "hold": 6},
