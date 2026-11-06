@@ -647,8 +647,8 @@ function renderSwitcher() {
 
 // ---------- phone layout ----------
 // Phones: the dataset switcher joins the bottom column (above the toolbar) instead of floating over it,
-// and --bottom-h tracks that column's height so the switcher (desktop), pop-ups and the loading pill sit
-// just above it whatever its height (toolbar wrapping, hint, tour card).
+// and --bottom-h tracks that column's height so pop-ups and the loading pill sit just above it (phones
+// only: style.css uses it inside the max-width: 640px block). Desktop layout is unchanged.
 const phoneMQ = matchMedia('(max-width: 640px)');
 function placeSwitcher() {
   const sw = $('#switcher');

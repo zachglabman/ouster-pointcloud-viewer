@@ -73,7 +73,7 @@ button { font: inherit; }
 #legend .ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 3px; }
 
 /* ---- dataset switcher (only with 2+ datasets) ---- */
-#switcher { position: absolute; left: 16px; bottom: calc(var(--bottom-h, 60px) + 24px); display: flex; gap: 8px; z-index: 10; flex-wrap: wrap; max-width: calc(100vw - 32px); }
+#switcher { position: absolute; left: 16px; bottom: 56px; display: flex; gap: 8px; z-index: 10; flex-wrap: wrap; max-width: calc(100vw - 32px); }
 #switcher:empty { display: none; }
 #switcher button {
   display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px;
