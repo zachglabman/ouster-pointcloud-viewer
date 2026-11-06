@@ -98,9 +98,10 @@ npm run sync-potree     # copies only what the viewer loads into public/potree
 
 ## Analytics
 
-GA4 property **G-Y572VZ4TRZ** (stream 16284157236) plus Tag Manager container **GTM-KBDS6372**, both set in
-`datasets.json` → `"analytics"`. Events go to GA4 directly (gtag.js), so nothing has to be configured in
-GTM; the container loads for anything added there later. Don't add a GA4 tag with the same ID inside GTM
+GA4 property **G-Y572VZ4TRZ** (stream 16284157236) plus Tag Manager container **GTM-KBDS6372**, both in
+`viewer/index.html` `<head>` (static, so Google's tag checker finds them). `src/analytics.js` sends viewer
+events through that tag, so nothing has to be configured in GTM; the container loads for anything added
+there later. Don't add a GA4 tag with the same ID inside GTM
 (page views would count twice). Events, each with a `dataset` parameter: `dataset_view`, `cta_click`,
 `share`, `measure`, `screenshot`, `nav_mode`, `xray`, `ortho`, `clean`, `advanced_open`, `viewpoint`.
 In GA4: register `dataset` as an event-scoped custom dimension, and mark `cta_click` as a key event.
