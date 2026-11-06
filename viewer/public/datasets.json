@@ -1,7 +1,8 @@
 {
   "default": "ggp",
   "analytics": {
-    "ga4": null
+    "gtm": "GTM-KBDS6372",
+    "ga4": "G-Y572VZ4TRZ"
   },
   "datasets": [
     {
