@@ -1,5 +1,5 @@
 // Guided tour: flies the camera through a dataset's `tour` stops (datasets.json), with a caption at each.
-//   "tour": [{ "name": "...", "caption": "...", "position": [x,y,z], "target": [x,y,z], "hold": 6 }, ...]
+//   "tour": [{ "name": "...", "chip": "spec pill", "caption": "...", "position": [x,y,z], "target": [x,y,z], "hold": 6 }, ...]
 // Motion: each leg eases in/out (smootherstep) on both camera position and look-at target, with a lift
 // on long legs so the camera arcs over the scene instead of cutting through it. At each stop the camera
 // drifts in a slow orbit while the caption is up. Any pointer/wheel/key input on the scene ends the tour
@@ -104,6 +104,7 @@ export function createTour({ viewer, el, root, onEvent = () => {}, onEnd = () =>
           pause,
           el('button', { className: 'icon', textContent: '›', title: 'Next stop', onclick: next }),
           el('button', { className: 'icon', textContent: '✕', title: 'End tour (or just drag the view)', onclick: () => stop('close') }))),
+      s.chip ? el('span', { className: 'tour-chip', textContent: s.chip }) : null,
       s.caption ? el('p', { textContent: s.caption }) : null,
       dots,
     ].filter(Boolean));

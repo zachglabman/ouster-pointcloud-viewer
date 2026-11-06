@@ -216,3 +216,4 @@ body.adv #gizmo, body.adv #measures { right: 304px; }
 @media (max-width: 640px) { #tour { width: auto; } }
 #tour:not([hidden]) + #hint { display: none; } /* the caption card replaces the controls hint while touring */
 @media (max-width: 400px) { #info .actions { flex-wrap: wrap; } }
+#tour .tour-chip { align-self: flex-start; font-size: 12px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent-fill); background: rgba(106, 169, 255, 0.08); border-radius: 999px; padding: 2px 9px; }
