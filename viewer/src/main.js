@@ -664,9 +664,10 @@ new ResizeObserver(setBottomH).observe($('#bottom'));
 // Potree's orbit controls only zoom with two fingers (panning needs three). Add the standard 3D-viewer
 // gesture: the midpoint of two fingers moves the view, using the same pan path as Potree's 3-finger pan.
 {
-  // Potree's pan (plus its glide after release) moves the scene ~2.3x the finger travel; PAN_K brings the
-  // point under the fingers back to ~1:1 (measured with synthetic touches).
-  const PAN_K = 0.45;
+  // Potree turns panDelta into world motion as panDelta * 3 * radius, ignoring the screen's shape, while
+  // the view at the pivot spans 2 * tan(fov/2) * radius tall and that * aspect wide. Scaling by those
+  // makes the scene follow the fingers on any screen (a fixed factor was ~2.5x too fast on portrait phones).
+  const PAN_FIT = 1.0;   // measured 1:1 with synthetic touches at 390x760 and 1320x733
   let prevMid = null;
   const mid = (t) => [(t[0].pageX + t[1].pageX) / 2, (t[0].pageY + t[1].pageY) / 2];
   const oc = viewer.orbitControls;
@@ -677,8 +678,9 @@ new ResizeObserver(setBottomH).observe($('#bottom'));
     const m = mid(e.touches);
     if (prevMid) {
       const el = viewer.renderer.domElement;
-      oc.panDelta.x += PAN_K * (m[0] - prevMid[0]) / el.clientWidth;
-      oc.panDelta.y += PAN_K * (m[1] - prevMid[1]) / el.clientHeight;
+      const span = 2 * Math.tan((viewer.getFOV() * Math.PI) / 360) / 3;      // view height / Potree pan scale
+      oc.panDelta.x += PAN_FIT * span * (m[0] - prevMid[0]) / el.clientHeight;  // x: width/height cancels aspect
+      oc.panDelta.y += PAN_FIT * span * (m[1] - prevMid[1]) / el.clientHeight;
     }
     prevMid = m;
   });
