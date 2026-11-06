@@ -133,8 +133,11 @@ const res = { frameMs: 16, lastChange: 0, ceiling: RES_MAX, ceilingUntil: 0 };
 // blobs; capped, coarse areas read as sparse points and sharpen as detail streams in.
 const MAX_POINT_PX = 4;
 const capPointSize = () => forClouds((pc) => { pc.material.uniforms.maxSize.value = MAX_POINT_PX * viewer.scaleFactor; });
-// Parallel node downloads (Potree default 4): detail arrives several times sooner on desktop connections.
-Potree.maxNodesLoading = isTouch ? 6 : 12;
+// Parallel node downloads (Potree default 4). Measured in Chrome against the bucket, 96 real chunks:
+// 4 at once 6.2 s, 12 4.2 s, 24 3.2 s, 48 3.6 s. (Merging adjacent chunks into one range request was
+// tried and dropped: views are bandwidth-bound, ~50 MB for a sharp 16 M-point view, so fewer requests
+// saved little; a view's chunks merge 0-30% in typical views.)
+Potree.maxNodesLoading = isTouch ? 8 : 24;
 function setScale(v) {
   v = Math.max(1, Math.min(RES_MAX, Math.round(v * 4) / 4));
   if (v === viewer.scaleFactor) return;
