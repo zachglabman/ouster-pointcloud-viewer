@@ -175,11 +175,9 @@
       ],
       "tour": [
         {"name": "Viansa Winery", "chip": "7.6M points · on foot", "caption": "7.6 million points captured on foot with OS1 Max, the same sensor that flew Golden Gate Park.", "position": [170, -125, 105], "target": [35, 20, 0], "hold": 6},
-        {"name": "The winery buildings", "chip": "256 channels", "caption": "256 channels cover walls and rooflines in one sweep, so every surface along the walk lands in the cloud.", "position": [95, -55, 35], "target": [45, 0, 2], "hold": 6},
-        {"name": "The entry circle", "chip": "±1.25 cm accuracy", "caption": "A planted circle a few meters across, placed as precisely as the buildings around it.", "position": [55, 20, 12], "target": [30, 50, -2], "hold": 6},
-        {"name": "The terrace", "chip": "116 dB dynamic range", "caption": "Color comes from the sensor itself. Wide dynamic range holds bright umbrellas and shaded trees in the same frame.", "position": [55, -45, 12], "target": [22, -12, 1], "hold": 6},
-        {"name": "The vineyard", "chip": "High resolution", "caption": "Each vine row resolves as its own line of points, right up to the winery walls.", "position": [-5, -38, 18], "target": [-50, 10, 0], "hold": 6},
-        {"name": "Back to the hilltop", "chip": "Up to 2 returns", "caption": "End of the tour. Drag to explore, or use Measure to check the distance between any two points.", "position": [-80, -120, 70], "target": [40, 10, 0], "hold": 7}
+        {"name": "The terrace", "chip": "±0.25 cm precision · ±1.25 cm accuracy", "caption": "Slice through the roofline and the surface holds to a thin, clean band of points. That’s precision down to ±0.25 cm and ±1.25 cm accuracy, around umbrellas and trees alike.", "position": [55, -45, 12], "target": [22, -12, 1], "hold": 8},
+        {"name": "The entry circle", "chip": "Native color", "caption": "A planted circle a few meters across, in true color from the sensor itself, with no separate camera.", "position": [55, 20, 12], "target": [30, 50, -2], "hold": 6},
+        {"name": "The vineyard", "chip": "High resolution", "caption": "Each vine row resolves as its own line of points, right up to the winery walls. Drag to explore, or use Measure to check a distance.", "position": [-5, -38, 18], "target": [-50, 10, 0], "hold": 6}
       ],
       "clean": {
         "zBand": [
