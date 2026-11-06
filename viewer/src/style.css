@@ -188,8 +188,9 @@ body.adv #gizmo, body.adv #measures { right: 304px; }
 #potree_render_area canvas { width: 100% !important; height: 100% !important; }
 
 /* ---- guided tour ---- */
-#info .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-#info .actions .cta { align-self: auto; }
+#info .actions { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 8px; } /* tour left of the CTA, one row */
+#info .actions .cta { align-self: auto; white-space: nowrap; padding: 8px 12px; font-size: 13px; }
+#info .actions .tour-btn { white-space: nowrap; padding: 7px 11px; font-size: 13px; flex: none; }
 .tour-btn {
   background: transparent; color: var(--text); border: 1px solid var(--soft); border-radius: 8px;
   padding: 7px 13px; cursor: pointer; font-weight: 600;
@@ -214,3 +215,4 @@ body.adv #gizmo, body.adv #measures { right: 304px; }
 .tour-dot.on { background: var(--accent); }
 @media (max-width: 640px) { #tour { width: auto; } }
 #tour:not([hidden]) + #hint { display: none; } /* the caption card replaces the controls hint while touring */
+@media (max-width: 400px) { #info .actions { flex-wrap: wrap; } }
