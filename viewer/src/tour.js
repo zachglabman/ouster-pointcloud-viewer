@@ -11,7 +11,7 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
 export function createTour({ viewer, el, root, onEvent = () => {}, onEnd = () => {} }) {
   let stops = null, i = 0, phase = 'idle', t = 0, legDur = 0, from = null, paused = false, dsId = null;
-  let drift = 0;
+  let drift = 0, wait = 0, quiet = 0;
 
   const view = () => viewer.scene.view;
   const cur = () => {
@@ -64,9 +64,13 @@ export function createTour({ viewer, el, root, onEvent = () => {}, onEnd = () =>
       const d = dist(from.position, s.position);
       pos[2] += Math.sin(Math.PI * t) * Math.min(80, d * 0.12);  // arc up on long legs
       place(pos, lerp3(from.target, s.target, e));
-      if (t >= 1) { phase = 'hold'; t = 0; onEvent('tour_stop_reached', { at: i + 1, name: s.name }); render(); }
+      if (t >= 1) { phase = 'hold'; t = 0; wait = 0; quiet = 0; onEvent('tour_stop_reached', { at: i + 1, name: s.name }); render(); }
     } else if (phase === 'hold') {
-      t += dt;
+      // The hold clock runs once the stop's detail has streamed in (or after 10 s regardless), so every
+      // caption is read over a sharp view rather than coarse points.
+      // Loading pauses briefly between batches, so "settled" = nothing loading for 1.5 s straight.
+      wait += dt; quiet = Potree.numNodesLoading === 0 ? quiet + dt : 0;
+      if (quiet > 1.5 || wait > 10) t += dt;
       // Slow drift around the target: ~10 degrees over the hold, eased at the start.
       const hold = s.hold ?? 6;
       const a = (s.drift ?? 0.03) * Math.min(1, t / 1.5) * dt;

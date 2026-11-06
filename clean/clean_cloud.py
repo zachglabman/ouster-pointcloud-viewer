@@ -5,7 +5,7 @@ and the viewer hides them (Clean button + Advanced sliders), so cleaning is reve
                                          PDAL filters.outlier, run multi-threaded with scipy: 11x faster,
                                          identical labels) + filters.elm (10 m, 1)
   Classification 65..71 color speckle    speckle.py: brighter + differently colored than its ~1.5 m
-                                         neighborhood (lidar/camera misregistration paints edges with
+                                         neighborhood (edge points pick up the color of what lies behind:
                                          sky/roof/road pixels). Band b = scores 32b..32b+31; the viewer's
                                          default strength (65%) hides bands 3..7 (score >= 96).
                                          --capture walk compares each point with the best-matching nearby

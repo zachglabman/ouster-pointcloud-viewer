@@ -1,7 +1,7 @@
 """Color-speckle score for colorized point clouds.
 
 A speckle is a point that is brighter than, and differently colored from, every patch of surface around it:
-lidar/camera misregistration paints edge points with sky/roof/road pixels. Real small bright objects
+edge points pick up the color of what lies behind the edge (sky, roof, road). Real small bright objects
 (lights, signs, paint) are bright *with* their neighbors, so their contrast is low.
 
 Reference color: each of the 27 voxels (VOX m) around the point is one surface patch, summarized by its

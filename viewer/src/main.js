@@ -108,11 +108,18 @@ const budgetFor = (ds) => Math.min((ds?.pointBudget || 8e6) / 1e6, isTouch ? 2 :
 // while frames are slow, back up once there is headroom.
 const RES_MAX = Math.min(window.devicePixelRatio || 1, isTouch ? 1.5 : 2);
 const res = { frameMs: 16, lastChange: 0, ceiling: RES_MAX, ceilingUntil: 0 };
+// Largest on-screen point, CSS px. Potree's default (50 device px) turns not-yet-refined areas into big
+// blobs; capped, coarse areas read as sparse points and sharpen as detail streams in.
+const MAX_POINT_PX = 4;
+const capPointSize = () => forClouds((pc) => { pc.material.uniforms.maxSize.value = MAX_POINT_PX * viewer.scaleFactor; });
+// Parallel node downloads (Potree default 4): detail arrives several times sooner on desktop connections.
+Potree.maxNodesLoading = isTouch ? 6 : 12;
 function setScale(v) {
   v = Math.max(1, Math.min(RES_MAX, Math.round(v * 4) / 4));
   if (v === viewer.scaleFactor) return;
   viewer.scaleFactor = v;
   viewer.setMinNodeSize(S.lodPx * v);
+  capPointSize();
 }
 function resTick(dtMs, now) {
   if (document.hidden) return;
@@ -209,6 +216,7 @@ function applySettings() {
   forClouds((pc) => {
     const m = pc.material;
     m.size = S.pointSize;
+    m.uniforms.maxSize.value = MAX_POINT_PX * viewer.scaleFactor;
     m.pointSizeType = Potree.PointSizeType[S.sizeType];
     m.shape = Potree.PointShape[S.shape];
     m.opacity = S.xray ? S.xrayOpacity : 1; // <1 = additive blend, no depth test: see-through
@@ -555,7 +563,7 @@ function renderPanel() {
         onInput: (n) => { S.voxelLevel = n >= vox.length ? Infinity : vox[n].level; applySettings(); },
         title: 'Coarsest spacing drawn: caps the octree depth (a runtime voxel grid)',
       }),
-      slider('Point budget', { min: 1, max: 16, step: 1, value: S.budgetM, fmt: (v) => v + 'M', onInput: (v) => { S.budgetM = v; applySettings(); } }),
+      slider('Point budget', { min: 1, max: 30, step: 1, value: S.budgetM, fmt: (v) => v + 'M', onInput: (v) => { S.budgetM = v; applySettings(); } }),
       slider('LOD threshold', { min: 4, max: 80, step: 1, value: S.lodPx, fmt: (v) => v + ' px', onInput: (v) => { S.lodPx = v; applySettings(); }, title: 'Lower = refine sooner (more detail, more load)' }),
     ),
     section('cleaning', 'Cleaning',
