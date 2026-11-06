@@ -7,7 +7,7 @@
     {
       "id": "ggp",
       "name": "Golden Gate Park",
-      "url": "https://storage.googleapis.com/ouster-pointcloud-viewer/pointclouds/ggp.copc.laz",
+      "url": "https://storage.googleapis.com/ouster-pointcloud-viewer/pointclouds/ggp-v2.copc.laz",
       "studioUrl": "https://studio.ouster.com/share/OQ20P447YJLEJV5W?utm_source=ouster-viz",
       "thumbnail": "thumbs/ggp.jpg",
       "title": "Golden Gate Park",
@@ -73,7 +73,11 @@
       },
       "pointBudget": 8000000,
       "maxFlySpeed": 150,
-      "caption": "Golden Gate Park, San Francisco. Drone-captured Ouster OS1 Max point cloud, 1.41 B points."
+      "caption": "Golden Gate Park, San Francisco. Drone-captured Ouster OS1 Max point cloud, 1.41 B points.",
+      "noiseClassified": true,
+      "speckle": {
+        "default": 65
+      }
     },
     {
       "id": "ggp-tile-test",
