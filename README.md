@@ -166,6 +166,8 @@ sh hosting/gcs-setup.sh site              # builds the viewer and uploads it
 | `?stats=1`, `?advanced=1`, `?dev=1` | performance overlay, open the Advanced panel, list `dev` datasets |
 | `?debug-analytics=1` | log analytics events to the console |
 
+Touch: one finger orbits, two fingers pinch to zoom and drag to pan, double-tap dives in.
+
 Keys: **G** fly mode, **M** measure, **O** orthographic, **X** X-ray, **T** top view, **1/2/3** color
 modes, **N** noise show/hide/only, **P** copy camera JSON, **Esc** cancel, **⌘Z** undo.
 

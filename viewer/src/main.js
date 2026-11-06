@@ -477,8 +477,8 @@ function renderToolbar() {
     popBtn('display', '◐ Display', 'X-ray, eye-dome lighting, point size'),
     isTouch || !UI.measure ? null : popBtn('measure', '⟷ Measure', 'Distance, height, area, point (M)', tools.inserting != null || tools.count(state.activeId) > 0),
     toggle('✦ Clean', S.clean, () => { ev('clean', { on: !S.clean }); setClean(!S.clean); }, ds.skyFilter ? 'Hide stray points and sky-colored fringe on edges' : ds.speckle ? 'Hide stray points and mis-colored speckle' : 'Hide stray points (noise below ground and in the air)'),
-    !UI.image ? null : el('button', { className: 'tb', textContent: '⤓ Image', title: 'Save a screenshot (PNG)', onclick: () => { ev('screenshot'); screenshot(viewer, `${ds.id}-view`).then(() => toast('Screenshot saved')); } }),
-    !UI.share ? null : el('button', { className: 'tb', textContent: '↗ Share', title: 'Copy a link to exactly this view (includes measurements)', onclick: share }),
+    !UI.image ? null : el('button', { className: 'tb', title: 'Save a screenshot (PNG)', ariaLabel: 'Save a screenshot', onclick: () => { ev('screenshot'); screenshot(viewer, `${ds.id}-view`).then(() => toast('Screenshot saved')); } }, ...tbLabel('⤓ Image')),
+    !UI.share ? null : el('button', { className: 'tb', title: 'Copy a link to exactly this view (includes measurements)', ariaLabel: 'Share this view', onclick: share }, ...tbLabel('↗ Share')),
     !UI.advanced ? null : toggle('⚙', state.advanced, () => { state.advanced = !state.advanced; if (state.advanced) ev('advanced_open'); renderAll(); }, 'Advanced controls'),
   ].filter(Boolean));
   const hint = $('#hint');
@@ -492,8 +492,11 @@ function renderToolbar() {
 
 // ---------- toolbar pop-overs ----------
 const NAV_LABEL = { orbit: '⟲ Orbit', fly: '✈ Fly', pan: '✋ Pan' };
+// "⟲ Orbit" -> icon + label; phones show only the icon (style.css .lbl), so the toolbar fits on 1-2 rows.
+const tbLabel = (label) => { const [icon, ...rest] = label.split(' '); return [el('span', { className: 'ic', textContent: icon }), el('span', { className: 'lbl', textContent: ' ' + rest.join(' ') })]; };
 function popBtn(id, label, title, active = false) {
-  const b = el('button', { className: 'tb pop-btn', textContent: label + ' ⌃', title, onclick: (e) => { e.stopPropagation(); state.pop = state.pop === id ? null : id; renderToolbar(); } });
+  const b = el('button', { className: 'tb pop-btn', title, ariaLabel: title, onclick: (e) => { e.stopPropagation(); state.pop = state.pop === id ? null : id; renderToolbar(); } },
+    ...tbLabel(label), el('span', { className: 'caret', textContent: ' ⌃' }));
   b.setAttribute('aria-pressed', String(state.pop === id || active));
   b.dataset.pop = id;
   return b;
@@ -642,7 +645,46 @@ function renderSwitcher() {
   }));
 }
 
-function renderAll() { renderInfo(); renderToolbar(); renderPanel(); renderSwitcher(); renderLegend(); document.body.classList.toggle('adv', state.advanced); }
+// ---------- phone layout ----------
+// Phones: the dataset switcher joins the bottom column (above the toolbar) instead of floating over it,
+// and --bottom-h tracks that column's height so the switcher (desktop), pop-ups and the loading pill sit
+// just above it whatever its height (toolbar wrapping, hint, tour card).
+const phoneMQ = matchMedia('(max-width: 640px)');
+function placeSwitcher() {
+  const sw = $('#switcher');
+  if (phoneMQ.matches) $('#bottom').insertBefore(sw, $('#toolbar'));
+  else if (sw.parentElement !== document.body) document.body.append(sw);
+}
+phoneMQ.addEventListener('change', placeSwitcher);
+placeSwitcher();
+const setBottomH = () => document.documentElement.style.setProperty('--bottom-h', $('#bottom').offsetHeight + 'px');
+new ResizeObserver(setBottomH).observe($('#bottom'));
+
+// ---------- two-finger touch: pinch to zoom AND drag to pan ----------
+// Potree's orbit controls only zoom with two fingers (panning needs three). Add the standard 3D-viewer
+// gesture: the midpoint of two fingers moves the view, using the same pan path as Potree's 3-finger pan.
+{
+  // Potree's pan (plus its glide after release) moves the scene ~2.3x the finger travel; PAN_K brings the
+  // point under the fingers back to ~1:1 (measured with synthetic touches).
+  const PAN_K = 0.45;
+  let prevMid = null;
+  const mid = (t) => [(t[0].pageX + t[1].pageX) / 2, (t[0].pageY + t[1].pageY) / 2];
+  const oc = viewer.orbitControls;
+  oc.addEventListener('touchstart', (e) => { prevMid = e.touches.length === 2 ? mid(e.touches) : null; });
+  oc.addEventListener('touchend', (e) => { prevMid = e.touches.length === 2 ? mid(e.touches) : null; });
+  oc.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 2) { prevMid = null; return; }
+    const m = mid(e.touches);
+    if (prevMid) {
+      const el = viewer.renderer.domElement;
+      oc.panDelta.x += PAN_K * (m[0] - prevMid[0]) / el.clientWidth;
+      oc.panDelta.y += PAN_K * (m[1] - prevMid[1]) / el.clientHeight;
+    }
+    prevMid = m;
+  });
+}
+
+function renderAll() { renderInfo(); renderToolbar(); renderPanel(); renderSwitcher(); renderLegend(); document.body.classList.toggle('adv', state.advanced); setBottomH(); }
 
 // ---------- keys ----------
 addEventListener('keydown', (e) => {

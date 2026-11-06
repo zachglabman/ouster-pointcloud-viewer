@@ -73,7 +73,7 @@ button { font: inherit; }
 #legend .ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 3px; }
 
 /* ---- dataset switcher (only with 2+ datasets) ---- */
-#switcher { position: absolute; left: 16px; bottom: 56px; display: flex; gap: 8px; z-index: 10; flex-wrap: wrap; max-width: calc(100vw - 32px); }
+#switcher { position: absolute; left: 16px; bottom: calc(var(--bottom-h, 60px) + 24px); display: flex; gap: 8px; z-index: 10; flex-wrap: wrap; max-width: calc(100vw - 32px); }
 #switcher:empty { display: none; }
 #switcher button {
   display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px;
@@ -229,3 +229,16 @@ body.adv #gizmo, body.adv #measures { right: 304px; }
 #loading .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: ld-pulse 1s ease-in-out infinite; }
 @keyframes ld-pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
 @media (max-width: 640px) { #loading { top: auto; bottom: 120px; } }
+
+/* ---- phones: stacked bottom column ---- */
+@media (max-width: 640px) {
+  #bottom { width: auto; }
+  #bottom #switcher { position: static; max-width: 100%; flex-wrap: nowrap; justify-content: center; overflow-x: auto; gap: 6px; }
+  #bottom #switcher button { padding: 3px 10px 3px 3px; font-size: 13px; gap: 6px; flex: none; }
+  #bottom #switcher button img, #bottom #switcher button .ph { width: 32px; height: 22px; }
+  #gizmo { display: none; }
+  #toolbar .lbl, #toolbar .caret { display: none; }   /* icon-only Orbit / Display / Image / Share */
+  #toolbar .tb { padding: 7px 11px; }
+  #loading { top: auto; bottom: calc(var(--bottom-h, 120px) + 24px); }
+  #panel { bottom: calc(var(--bottom-h, 120px) + 24px); max-height: calc(100vh - var(--bottom-h, 120px) - 140px); }
+}
