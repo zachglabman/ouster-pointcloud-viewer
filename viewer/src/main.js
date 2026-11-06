@@ -52,7 +52,9 @@ const DEFAULTS = {
   refl: { range: [0, 40], gamma: 1 },
   rgb: { gamma: 1, brightness: 0, contrast: 0 },
   pointSize: 0.5, sizeType: 'ADAPTIVE', shape: 'CIRCLE',
-  budgetM: 4, voxelLevel: Infinity, lodPx: 10,
+  budgetM: isTouch ? 2 : 8, voxelLevel: Infinity,
+  lodPx: isTouch ? 10 : 6,       // refine a node once it covers this many CSS px (lower = sooner)
+  res: 'auto',                   // render resolution: 'auto' (adaptive) | 1 | 1.5 | 2  (x CSS pixels)
   clean: true,                   // simple toggle: applies the dataset's clean preset
   noise: 'show',                 // show | hide | only   (Classification 7)
   zBand: null,                   // [zmin, zmax] world Z; null = full extent
@@ -65,6 +67,48 @@ const DEFAULTS = {
 const S = structuredClone(DEFAULTS);
 const state = { activeId: null, boost: 1, baseSpeed: null, autoOrbit: false, advanced: params.has('advanced'), pop: null };
 const clouds = new Map();
+// Potree's pick() gets the mouse in CSS px but reads its pick buffer at render size (scaleFactor x CSS).
+// Scale the coordinates so clicks (measurements, double-click zoom) land under the cursor.
+function patchPick(pc) {
+  const proto = Object.getPrototypeOf(pc);
+  if (proto.__scaledPick) return;
+  const pick = proto.pick;
+  proto.pick = function (viewer, camera, ray, params = {}) {
+    const k = viewer.scaleFactor || 1;
+    if (k !== 1 && params.x != null) params = { ...params, x: params.x * k, y: params.y * k };
+    return pick.call(this, viewer, camera, ray, params);
+  };
+  proto.__scaledPick = true;
+}
+const budgetFor = (ds) => Math.min((ds?.pointBudget || 8e6) / 1e6, isTouch ? 2 : 99);
+
+// ---------- render resolution ----------
+// Potree draws at CSS-pixel size by default (half resolution on Retina). viewer.scaleFactor sizes the
+// drawing buffer and EDL targets; CSS (#potree_render_area canvas) pins the displayed size.
+// 'auto' starts at the screen's real resolution (capped at 2x desktop, 1.5x phones) and steps down
+// while frames are slow, back up once there is headroom.
+const RES_MAX = Math.min(window.devicePixelRatio || 1, isTouch ? 1.5 : 2);
+const res = { frameMs: 16, lastChange: 0, ceiling: RES_MAX, ceilingUntil: 0 };
+function setScale(v) {
+  v = Math.max(1, Math.min(RES_MAX, Math.round(v * 4) / 4));
+  if (v === viewer.scaleFactor) return;
+  viewer.scaleFactor = v;
+  viewer.setMinNodeSize(S.lodPx * v);
+}
+function resTick(dtMs, now) {
+  if (document.hidden) return;
+  res.frameMs += (dtMs - res.frameMs) * 0.1; // smoothed frame time
+  if (S.res !== 'auto') return setScale(Number(S.res));
+  if (now - res.lastChange < 1500) return;
+  if (now > res.ceilingUntil) res.ceiling = RES_MAX;
+  if (res.frameMs > 24 && viewer.scaleFactor > 1) {            // below ~42 fps: step down, and stay below
+    res.ceiling = viewer.scaleFactor - 0.25; res.ceilingUntil = now + 20000;   // this scale for 20 s
+    setScale(res.ceiling); res.lastChange = now;
+  } else if (res.frameMs < 18 && viewer.scaleFactor < res.ceiling) {          // holding ~60 fps (vsync): step up
+    setScale(viewer.scaleFactor + 0.25); res.lastChange = now;
+  }
+}
+viewer.scaleFactor = RES_MAX;
 const info = new Map();
 
 const activeDs = () => datasets.find((d) => d.id === state.activeId);
@@ -83,6 +127,7 @@ function load(ds) {
           zMax: h ? h.max[2] : pc.boundingBox.max.z,
           rootSpacing: pc.pcoGeometry.spacing,
         });
+        patchPick(pc);
         viewer.scene.addPointCloud(pc);
         resolve(pc);
       });
@@ -128,7 +173,7 @@ function applySettings() {
   viewer.setEDLStrength(S.edlStrength);
   viewer.setEDLRadius(S.edlRadius);
   viewer.setPointBudget(S.budgetM * 1e6);
-  viewer.setMinNodeSize(S.lodPx);
+  viewer.setMinNodeSize(S.lodPx * viewer.scaleFactor); // Potree measures node size in render pixels
   for (const key of Object.keys(viewer.classifications)) {
     const isNoise = key === '7';
     viewer.setClassificationVisibility(key, S.noise === 'show' ? true : S.noise === 'hide' ? !isNoise : isNoise);
@@ -220,7 +265,7 @@ async function switchTo(id, { cam = null, color = null } = {}) {
   if (!ds || id === state.activeId) return;
   state.activeId = id;
   history.replaceState(null, '', `${location.search}#d=${id}`); // replaceState fires no hashchange
-  S.budgetM = Math.min((ds.pointBudget || 4e6) / 1e6, isTouch ? 2 : 99);
+  S.budgetM = budgetFor(ds);
   renderAll();
 
   const pc = await load(ds);
@@ -458,6 +503,9 @@ function renderPanel() {
     section('view', 'View',
       slider('FOV', { min: 30, max: 100, step: 1, value: S.fov, fmt: (v) => v + '°', onInput: (v) => { S.fov = v; applySettings(); } }),
       seg([['black', 'Black'], ['gradient', 'Gradient'], ['white', 'White']], S.background, (k) => { S.background = k; rerender(); }),
+      el('div', { className: 'row-label', textContent: 'Resolution' }),
+      seg([['auto', 'Auto', 'Sharpest the device keeps smooth'], ['1', 'Standard'], ...(RES_MAX >= 1.5 ? [['1.5', '1.5×']] : []), ...(RES_MAX >= 2 ? [['2', 'Retina 2×']] : [])],
+        String(S.res), (k) => { S.res = k === 'auto' ? 'auto' : k; if (k !== 'auto') setScale(Number(k)); else res.lastChange = 0; rerender(); }),
       el('div', { className: 'speed', id: 'speed', hidden: S.nav !== 'fly' }),
     ),
     section('color', 'Color',
@@ -501,7 +549,7 @@ function renderPanel() {
       el('button', { className: 'link', textContent: 'Reset all', onclick: () => {
         const keep = { nav: S.nav, colorKey: S.colorKey };
         Object.assign(S, structuredClone(DEFAULTS), keep);
-        S.budgetM = Math.min((activeDs()?.pointBudget || 4e6) / 1e6, isTouch ? 2 : 99);
+        S.budgetM = budgetFor(activeDs());
         setClean(true);
       } }),
     ),
@@ -566,6 +614,7 @@ if (params.has('stats')) statsEl.hidden = false;
 let frames = 0, last = performance.now(), fps = 0, firstPixels = null;
 viewer.addEventListener('update', () => {
   const now = performance.now();
+  resTick(now - lastT, now);
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
   if (state.autoOrbit) { // circle the camera around its pivot, ~100 s per revolution
     const v = viewer.scene.view, p = v.getPivot(), a = dt * 0.06;
@@ -582,7 +631,7 @@ viewer.addEventListener('update', () => {
   const pts = viewer.scene.pointclouds.filter((p) => p.visible).reduce((s, p) => s + (p.numVisiblePoints || 0), 0);
   if (firstPixels === null && pts > 0) firstPixels = now - T0;
   if (now - last >= 500) { fps = (frames * 1000) / (now - last); frames = 0; last = now; }
-  statsEl.textContent = `fps ${fps.toFixed(0)}\npoints ${(pts / 1e6).toFixed(2)}M / ${(viewer.getPointBudget() / 1e6).toFixed(1)}M\nfirst pixels ${firstPixels ? (firstPixels / 1000).toFixed(2) + ' s' : '…'}`;
+  statsEl.textContent = `fps ${fps.toFixed(0)}\npoints ${(pts / 1e6).toFixed(2)}M / ${(viewer.getPointBudget() / 1e6).toFixed(1)}M\nfirst pixels ${firstPixels ? (firstPixels / 1000).toFixed(2) + ' s' : '…'}\nresolution ${viewer.scaleFactor}x (${S.res})`;
 });
 
 // Share links pasted into an already-open viewer only change the hash (no reload): apply them.

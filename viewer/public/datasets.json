@@ -71,7 +71,7 @@
           ]
         }
       },
-      "pointBudget": 4000000,
+      "pointBudget": 8000000,
       "maxFlySpeed": 150,
       "caption": "Golden Gate Park, San Francisco. Drone-captured Ouster OS1 Max point cloud, 1.41 B points."
     },
@@ -133,7 +133,7 @@
           "contrast": 0.0
         }
       },
-      "pointBudget": 4000000,
+      "pointBudget": 8000000,
       "maxFlySpeed": 60,
       "noiseClassified": true,
       "skyFilter": {

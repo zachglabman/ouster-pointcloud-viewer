@@ -183,3 +183,6 @@ body.adv #gizmo, body.adv #measures { right: 304px; }
 #pop .m-row { display: flex; gap: 6px; }
 #pop .chip:disabled { opacity: 0.4; cursor: default; }
 #pop .chip.danger:not(:disabled):hover { border-color: #ff6b6b; color: #ff9b9b; }
+
+/* Potree sizes the canvas in render pixels (scaleFactor x CSS); pin its displayed size to the container. */
+#potree_render_area canvas { width: 100% !important; height: 100% !important; }
