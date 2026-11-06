@@ -15,8 +15,10 @@
 # index.html + datasets.json are no-cache (copy edits stay instant), so no invalidations are needed.
 # Range requests on the 13.8 GB file are cached in chunks (GCS supports byte ranges).
 set -eu
-PROJECT="${PROJECT:-ouster-growth-dashboard}"
-BUCKET="${BUCKET:-ouster-pointcloud-viewer}"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+[ -f "$HERE/.env" ] && { set -a; . "$HERE/.env"; set +a; }
+PROJECT="${PROJECT:?set PROJECT in hosting/.env}"
+BUCKET="${BUCKET:?set BUCKET in hosting/.env}"
 N="${NAME:-pointcloud-viewer}"
 G="--project=$PROJECT"
 

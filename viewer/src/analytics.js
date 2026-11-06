@@ -1,12 +1,10 @@
-// Analytics. The Google tag (GA4 G-Y572VZ4TRZ) and Tag Manager container (GTM-KBDS6372) are in
-// index.html <head>, so Google's tag checker sees them and page views count before the app loads.
-// This module only sends viewer events through that tag. Events (all carry `dataset`): dataset_view,
-// cta_click, share, measure, screenshot, nav_mode, xray, ortho, clean, advanced_open, viewpoint.
+// Analytics events. The Google tag / Tag Manager snippets are injected into index.html at build time from
+// VITE_GA4_ID / VITE_GTM_ID in viewer/.env (see vite.config.js); without them this sends nothing.
+// Events (all carry `dataset`): dataset_view, cta_click, share, measure, screenshot, nav_mode, xray, ortho,
+// clean, advanced_open, viewpoint, tour_start, tour_stop_reached, tour_stop_loaded, tour_stop, tour_complete.
 // ?debug-analytics=1 logs events to the console.
 
 const debug = new URLSearchParams(location.search).has('debug-analytics');
-
-export function initAnalytics() {}
 
 export function track(name, params = {}) {
   if (debug) console.debug('[analytics]', name, params);

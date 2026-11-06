@@ -1,5 +1,5 @@
 #!/bin/sh
-# Step 5 on Google Cloud Storage.
+# Host the viewer and point clouds on Google Cloud Storage. Settings: hosting/.env.
 #   sh gcs-setup.sh bucket    # create private bucket + CORS (safe, reversible)
 #   sh gcs-setup.sh upload    # upload out/*.copc.laz (all of them)
 #   sh gcs-setup.sh publish F # upload ONE data file F (new name per version: cached 1 year) + range check
@@ -8,11 +8,13 @@
 #   sh gcs-setup.sh check     # range-request test (expects 206 + CORS header)
 #   sh gcs-setup.sh teardown  # delete objects and bucket
 set -eu
-PROJECT="${PROJECT:-ouster-growth-dashboard}"
-BUCKET="${BUCKET:-ouster-pointcloud-viewer}"
+HERE="$(cd "$(dirname "$0")" && pwd)"; OUT="$HERE/../out"
+# Settings come from hosting/.env (copy hosting/.env.example).
+[ -f "$HERE/.env" ] && { set -a; . "$HERE/.env"; set +a; }
+PROJECT="${PROJECT:?set PROJECT in hosting/.env (your Google Cloud project ID)}"
+BUCKET="${BUCKET:?set BUCKET in hosting/.env (a globally unique bucket name)}"
 REGION="${REGION:-us-west1}"
 PREFIX="${PREFIX:-pointclouds}"
-HERE="$(cd "$(dirname "$0")" && pwd)"; OUT="$HERE/../out"
 URL_BASE="https://storage.googleapis.com/$BUCKET/$PREFIX"
 
 case "${1:-}" in

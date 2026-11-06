@@ -1,20 +1,17 @@
 {
-  "name": "ggp-viewer",
+  "name": "ouster-pointcloud-viewer",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Browser viewer for large Ouster lidar point clouds (Potree 1.8.2 + COPC streaming)",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "sync-potree": "sh scripts/sync-potree.sh"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "license": "UNLICENSED",
   "type": "module",
   "devDependencies": {
     "vite": "^5.4.10"
-  }
+  },
+  "private": true
 }

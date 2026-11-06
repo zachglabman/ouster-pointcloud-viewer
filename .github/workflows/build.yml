@@ -1,0 +1,24 @@
+name: build
+on: [push, pull_request]
+jobs:
+  viewer:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: viewer } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: viewer/package-lock.json }
+      - run: npm ci
+      - run: npm run build
+      - name: datasets configs are valid JSON
+        run: for f in public/datasets*.json; do node -e "JSON.parse(require('fs').readFileSync('$f'))" && echo "ok $f"; done
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: scripts compile
+        run: python -m py_compile clean/*.py sky/*.py
+      - name: shell scripts parse
+        run: for f in hosting/*.sh viewer/scripts/*.sh; do sh -n "$f" && echo "ok $f"; done

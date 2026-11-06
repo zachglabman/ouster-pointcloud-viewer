@@ -85,53 +85,6 @@
       }
     },
     {
-      "id": "ggp-tile-test",
-      "name": "GGP clean test",
-      "url": "/data/ggp-tile-test.copc.laz",
-      "thumbnail": null,
-      "title": "GGP clean test (dev)",
-      "description": "Point cloud of Golden Gate Park in San Francisco, captured by drone with an Ouster OS1 Max. Fly through it, switch between true color and reflectivity, and zoom down to individual points.",
-      "facts": [
-        "Ouster OS1 Max",
-        "Drone capture",
-        "1.41 B points",
-        "~1.6 × 1.6 km",
-        "Reflectivity + RGB"
-      ],
-      "camera": null,
-      "autoOrbit": false,
-      "viewpoints": [],
-      "clean": {
-        "zBand": null
-      },
-      "colorMode": "rgb",
-      "colorModes": {
-        "rgb": {
-          "label": "RGB",
-          "attribute": "rgba",
-          "gamma": 1.0,
-          "brightness": 0.0,
-          "contrast": 0.0
-        },
-        "reflectivity": {
-          "label": "Reflectivity",
-          "attribute": "intensity",
-          "range": [
-            0,
-            40
-          ]
-        }
-      },
-      "pointBudget": 8000000,
-      "maxFlySpeed": 150,
-      "caption": "Golden Gate Park, San Francisco. Drone-captured Ouster OS1 Max point cloud, 1.41 B points.",
-      "dev": true,
-      "noiseClassified": true,
-      "speckle": {
-        "default": 65
-      }
-    },
-    {
       "id": "viansa",
       "name": "Viansa Winery",
       "url": "https://storage.googleapis.com/ouster-pointcloud-viewer/pointclouds/viansa-v2.copc.laz",
@@ -206,11 +159,6 @@
         "label": "See more datasets like this",
         "url": "https://studio.ouster.com/?utm_source=ouster-viz"
       }
-    },
-    {
-      "id": "slot-3",
-      "name": "Coming soon",
-      "url": null
     }
   ]
 }

@@ -1,111 +1,243 @@
 # Ouster point cloud viewer
 
-Browser viewer for large Ouster OS1 Max point clouds, built on Potree 1.8.2 and streaming COPC files from Google Cloud Storage.
+Explore billion-point Ouster lidar captures in the browser: stream them, clean them, fly a guided tour,
+measure, and share a link to an exact view.
 
 **Live:** https://storage.googleapis.com/ouster-pointcloud-viewer/viewer/index.html
 
-| Dataset | Capture | Points | File |
+![Golden Gate Park in the viewer](viewer/public/og.jpg)
+
+| Dataset | Capture | Points | Streams |
 |---|---|---|---|
-| Golden Gate Park, San Francisco | Drone, OS1 Max | 1.41 B | `pointclouds/ggp-v2.copc.laz` (13.8 GB) |
-| Viansa Winery, Sonoma | Walking, OS1 Max | 7.59 M | `pointclouds/viansa-v2.copc.laz` (83 MB) |
+| Golden Gate Park, San Francisco | Drone, OS1 Max | 1.41 B | 13.8 GB COPC |
+| Viansa Winery, Sonoma | Walking, OS1 Max | 7.59 M | 79 MB COPC |
 
-## Layout
+**What it does**
 
-```
-viewer/                 Vite app (the site)
-  index.html            page shell, link-preview tags
-  src/main.js           settings, toolbar, pop-overs, advanced panel, share links, keys
-  src/tools.js          measurements (Potree MeasuringTool + readout/undo/share codec), axis gizmo, screenshot
-  src/analytics.js      optional GA4 events
-  src/style.css
-  public/datasets.json  datasets, copy, cameras, viewpoints, clean presets, analytics ID
-  public/potree/        built Potree bundle + the libs it needs (generated, committed)
-  patches/              our changes to Potree 1.8.2 source (shader filters)
-  scripts/sync-potree.sh
-hosting/gcs-setup.sh    bucket, data upload, site deploy, range check
-sky/                    sky-fringe scoring for colorized clouds (Viansa)
-```
+- Streams [COPC](https://copc.io) files straight from a storage bucket with HTTP range requests: no server,
+  and a 13.8 GB cloud opens in seconds because only what's on screen loads.
+- Cleans noisy point clouds without deleting anything: floating noise and mis-colored speckle are
+  *classified*, and the viewer hides them (Clean button), so it's reversible.
+- Guided tours with captions, measurements (distance, height, area, point), orthographic and X-ray
+  views, eye-dome lighting, screenshots, and share links that carry the camera and measurements.
+- Built on [Potree 1.8.2](https://github.com/potree/potree) (WebGL) and [Vite](https://vitejs.dev).
 
-## Run locally
+---
+
+## 1. Run it locally (2 minutes)
+
+You need [Node.js](https://nodejs.org) 18 or newer.
 
 ```sh
-cd viewer
+git clone https://github.com/zachglabman/ouster-pointcloud-viewer.git
+cd ouster-pointcloud-viewer/viewer
 npm install
-npm run dev          # http://localhost:5173 ; local files in ../out are served at /data/
+npm run dev
 ```
 
-## Deploy
+Open the address it prints (e.g. http://localhost:5173):
+
+- `/` shows the live datasets, streamed from the public bucket.
+- `/?config=datasets.sample.json` shows a 4.6 MB sample bundled with the repo (works offline).
+
+## 2. View your own point cloud
+
+This works with any point cloud PDAL can read: LAS, LAZ, COPC or PLY. **From Ouster Studio:** open a
+recording, click the download icon, and under **Outputs → SLAM** download the **PLY**.
+
+### a. Set up the processing tools (once)
+
+[Miniforge](https://github.com/conda-forge/miniforge) (or any conda) gives you PDAL, untwine and scipy:
 
 ```sh
-gcloud auth login                       # if the token expired
-sh hosting/gcs-setup.sh site            # build + upload viewer/dist to gs://ouster-pointcloud-viewer/viewer/
+conda create -n pc -c conda-forge python=3.11 pdal python-pdal untwine scipy numpy
+conda activate pc
 ```
 
-- `index.html` and `datasets.json` are `no-cache`: copy/viewpoint edits are live on the next page load.
-- Hashed `assets/` are immutable; `potree/` is cached 1 day. Text files are stored gzip-encoded.
-- Data files are cached for a year. **A changed data file needs a new filename** (e.g. `viansa-v2.copc.laz`).
-- The "thumbs: no URLs matched" error is gone once `public/thumbs/` exists; harmless either way.
-
-## Add a dataset
+### b. Clean and convert
 
 ```sh
-PY=/opt/homebrew/Caskroom/miniforge/base/envs/pc/bin/python
-# 1. clean + convert: any LAS/LAZ/COPC/PLY -> out/<id>.copc.laz + out/<id>.dataset.json (every point kept)
-nohup $PY -I clean/clean_cloud.py path/to/input out/<id> --id <id> > out/<id>.clean.out 2>&1 &
-caffeinate -i -w $! &
-# 2. upload (refuses to overwrite: data is cached for a year, so a new version needs a new name)
-sh hosting/gcs-setup.sh publish out/<id>.copc.laz
-# 3. paste out/<id>.dataset.json into viewer/public/datasets.json, fill in the copy, add thumbs/<id>.jpg (176x120)
-# 4. fly to good spots in the dev viewer, press P to copy viewpoint JSON, then
-sh hosting/gcs-setup.sh site
+# from the repo root
+python clean/clean_cloud.py ~/Downloads/my_site.ply out/my_site --id my_site --capture walk
 ```
 
-**Cleaning** classifies instead of deleting, and the viewer hides the classes (Clean button, Advanced → Cleaning):
+- `--capture walk` for walking or vehicle captures, `--capture drone` (default) for aerial ones.
+- Every point is kept. You get:
+  - `out/my_site.copc.laz`: the streamable cloud
+  - `out/my_site.dataset.json`: a ready-to-paste viewer entry
+  - `out/my_site.qa.png` and `.qa.json`: a review report (see [Cleaning](#cleaning))
+- Time: about 20 s for 7.6 M points; a 1.4 B-point cloud takes 30 to 45 minutes on a 10-core Mac.
+- Maps without color (reflectivity only) work too: they're shown by reflectivity, and the color-speckle
+  step is skipped.
 
-| Class | Meaning | Detector |
+**Look at `out/my_site.qa.png` before going further.** It shows the original, what was flagged (red) and
+the cleaned result for three sample areas.
+
+### c. Try it in the local viewer
+
+The dev server serves `out/` at `/data/`, so the new cloud streams locally exactly as it will online.
+
+1. Open `viewer/public/datasets.json` and paste the contents of `out/my_site.dataset.json` into the
+   `"datasets"` list. Its `"url"` is already `data/my_site.copc.laz`.
+2. Replace the `<...>` placeholders in its `title`, `description` and `facts`.
+3. Run `npm run dev` and pick your dataset from the switcher (bottom left).
+4. Fly to a good opening view and press **P**: it copies that camera as JSON. Paste it as the dataset's
+   `"camera"`, or into `"viewpoints"` / `"tour"`.
+
+## 3. Put it online (Google Cloud Storage)
+
+Everything is static files in one bucket: the site under `viewer/`, the clouds under `pointclouds/`.
+You need the [gcloud CLI](https://cloud.google.com/sdk/docs/install) and a Google Cloud project.
+
+### a. One-time setup
+
+```sh
+cp hosting/.env.example hosting/.env      # set PROJECT and BUCKET
+cp viewer/.env.example  viewer/.env       # optional: site URL for link previews, analytics IDs
+gcloud auth login
+sh hosting/gcs-setup.sh bucket            # creates the bucket with CORS for range requests
+sh hosting/gcs-setup.sh public            # makes it world-readable (needed for a public viewer)
+```
+
+### b. Publish a point cloud
+
+```sh
+sh hosting/gcs-setup.sh publish out/my_site.copc.laz
+```
+
+It prints the public URL; put it in the dataset's `"url"`.
+
+- Data files are cached for a year, so **a changed cloud needs a new file name** (e.g. `my_site-v2`).
+  `publish` refuses to overwrite.
+- If the review report status is `hold`, `publish` refuses; check the PNG, then `FORCE=1 sh ... publish`.
+
+### c. Deploy the site
+
+```sh
+sh hosting/gcs-setup.sh site              # builds the viewer and uploads it
+```
+
+`index.html` and `datasets.json` are never cached, so copy edits are live on the next page load.
+
+## 4. Configure
+
+### `viewer/public/datasets.json`
+
+```jsonc
+{
+  "default": "my_site",                 // dataset shown first
+  "ui": { "switcher": true, "cta": true, "tour": true, "share": true,
+          "measure": true, "image": true, "advanced": true },   // turn parts of the UI off (e.g. for an embed)
+  "datasets": [ { /* one entry per point cloud, fields below */ } ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `id`, `name`, `title` | URL key (`#d=<id>`), switcher label, info-card heading |
+| `url` | the `.copc.laz` (absolute, or relative to the site) |
+| `description`, `facts` | info-card text and the small chips under it |
+| `thumbnail` | switcher image, 176 × 120 (`thumbs/<id>.jpg`) |
+| `cta` | `{ "label", "url" }` button in the info card |
+| `camera` | opening view: `{ "position": [x,y,z], "target": [x,y,z] }` (press **P** in the viewer) |
+| `viewpoints` | "Jump to" chips: `[{ "name", "position", "target" }]` |
+| `tour` | guided tour stops: `[{ "name", "chip", "caption", "position", "target", "hold" }]` |
+| `colorMode`, `colorModes` | default and available looks (`rgb`, `reflectivity`); Height is always added |
+| `noiseClassified`, `speckle`, `skyFilter`, `clean` | cleaning presets (written by `clean_cloud.py`) |
+| `pointBudget`, `maxFlySpeed` | points on screen (desktop; phones cap at 2 M) and fly-mode speed cap |
+| `autoOrbit` | slowly circle the opening view until the visitor moves |
+| `dev` | only listed with `?dev=1` |
+
+### `viewer/.env` (build time, optional)
+
+| Variable | Meaning |
+|---|---|
+| `VITE_SITE_URL` | public URL of the deployed viewer folder, for link previews (`og:url`, `og:image`) |
+| `VITE_GA4_ID` | Google Analytics 4 measurement ID (production builds only) |
+| `VITE_GTM_ID` | Google Tag Manager container |
+
+### URL parameters
+
+| Parameter | Meaning |
+|---|---|
+| `#d=<id>&cam=…&m=…` | dataset, camera, measurements (what **Share** copies) |
+| `#d=<id>&tour` | open straight into the guided tour |
+| `?config=<file>.json` | another dataset list from the same site (relative paths only) |
+| `?stats=1`, `?advanced=1`, `?dev=1` | performance overlay, open the Advanced panel, list `dev` datasets |
+| `?debug-analytics=1` | log analytics events to the console |
+
+Keys: **G** fly mode, **M** measure, **O** orthographic, **X** X-ray, **T** top view, **1/2/3** color
+modes, **N** noise show/hide/only, **P** copy camera JSON, **Esc** cancel, **⌘Z** undo.
+
+## Cleaning
+
+`clean/clean_cloud.py` classifies, never deletes. The viewer's **Clean** button and the Advanced →
+Cleaning sliders decide what's hidden.
+
+| Class | Defect | Detector |
 |---|---|---|
-| 7 | floating noise (air, below ground) | `filters.outlier` statistical (mean_k 12, ×3) + `filters.elm` (10 m, 1) |
-| 65–71 | color speckle, 8 strength bands (score // 32) | `clean/speckle.py`: brighter and differently colored than the ~1.5 m neighborhood |
+| 7 | floating noise: specks in the air, points below the ground | statistical outlier (mean distance to 12 neighbors > mean + 3 sd) + `filters.elm` |
+| 65–71 | color speckle: bright or sky-colored dots on real surfaces (tree and roof edges, wires) | `clean/speckle.py`: brighter and differently colored than nearby surfaces; 8 strength bands |
 
-Inputs over 40 M points are processed in 100 m tiles with a 3 m overlap and merged with untwine; the
-tool checks the point count matches the source exactly. The outlier test runs multi-threaded (scipy),
-so a dense 33 M-point tile takes ~65 s (was ~10 min with PDAL's single-threaded filter; labels identical).
-Viansa: 20 s. Golden Gate Park would now take roughly 15–25 min (the original run: 1 h 32 min).
-
-Each run writes `out/<id>.qa.png` and `out/<id>.qa.json`: before / flagged (red) / cleaned renders of the
-densest, a typical, and the most-flagged area, plus class shares. Status `hold` (noise > 2%, speckle > 8%,
-or a sampled area > 25% flagged) makes `gcs-setup.sh publish` refuse until you've looked
-(`FORCE=1` to publish anyway).
-
-Use `--capture walk` for ground-level captures: each point is compared with the best-matching nearby
-surface patch instead of the neighborhood average, so narrow bright ground next to dense plants (sand
-paths, curbs, small white structures) isn't flagged; sky-colored points still get the average test, so
-canopy sky fringe is still caught. Viansa: 6.2% → 2.1% hidden. Drone captures keep the default.
-
-`clean/run_ggp.py` is the original Golden Gate Park run (same labels, PDAL outlier filter, fixed grid).
-
-## CDN (optional, faster loading)
-
-`hosting/cdn-setup.sh` puts Cloud CDN and a custom domain in front of the bucket (HTTPS load balancer +
-backend bucket, caching by the objects' own Cache-Control). Straight from the bucket each chunk waits
-~0.25-0.5 s; cached at an edge, ~20-50 ms. After it's live, point the dataset `url`s in datasets.json at
-the new domain (same paths) and redeploy.
+- Speckle is a color defect, so maps without color only get the noise class.
+- `--capture walk` compares each point with the best-matching nearby surface instead of the
+  neighborhood average, so narrow bright ground next to dense plants (sand paths, curbs) isn't flagged.
+- Inputs over 40 M points are processed in 100 m tiles with a 3 m overlap, merged with untwine, and the
+  point count is checked against the source.
+- **Review report:** `qa.png` (original / flagged / cleaned for the densest, a typical and the
+  most-flagged area) and `qa.json`. Status `hold` (noise > 2%, speckle > 8%, or a sampled area > 25%
+  flagged) blocks `publish` until you've looked.
 
 ## Guided tour
 
-`"tour"` in a dataset (datasets.json) lists stops `{ name, caption, position, target, hold }`. **▶ Take the
-tour** in the info card flies between them (eased, arcing over long legs, slow drift while a caption shows).
-← / → step, Space pauses, any drag/scroll/other key hands control back where the camera is.
-`#d=<id>&tour` opens straight into it. Bandwidth goes where the camera is heading: during a flight the
-destination's detail downloads first, and once a stop is sharp, the next stop's (a second-camera visibility
-pass after each frame). A stop never moves on before it has loaded (full point budget, or loading quiet
-for 1.5 s; 25 s cap), and holds still until then. A "Refining detail…" pill shows while the
-current view is still loading. Author stops in the dev viewer with **P** (copies camera JSON).
-Events: `tour_start`, `tour_stop_reached`, `tour_stop_loaded` (`seconds` waited), `tour_stop` (`at`, `reason`), `tour_complete`. Code: `src/tour.js`.
+Add a `"tour"` list to a dataset. Visitors click **▶ Take the tour** or open `#d=<id>&tour`.
 
-## Potree
+- The camera eases between stops and arcs over long hops. During each flight it downloads the
+  destination's detail first.
+- A stop doesn't move on until its view has loaded (25 s cap). Then it drifts slowly while the caption
+  shows, and downloads the next stop.
+- **← / →** step through stops and **Space** pauses. Any drag, scroll or other key hands control back to
+  the visitor.
 
-The viewer uses Potree 1.8.2 with a small shader patch (reflectivity and world-Z discard filters, tagged `[ggp]`). To rebuild it:
+## Analytics
+
+Set `VITE_GA4_ID` (and/or `VITE_GTM_ID`) in `viewer/.env` and redeploy. Every event carries the
+`dataset`: `dataset_view`, `cta_click`, `share`, `measure`, `screenshot`, `nav_mode`, `xray`, `ortho`,
+`clean`, `advanced_open`, `viewpoint`, `tour_start`, `tour_stop_reached`, `tour_stop_loaded` (with
+`seconds` waited), `tour_stop`, `tour_complete`.
+
+## Performance notes
+
+- Loading is bandwidth-bound: a sharp 16 M-point view is about 50 MB. The point budget is the main dial.
+- 24 parallel downloads (measured best), a 4 px cap on point size (no blobs while detail streams in), a
+  "Refining detail…" indicator, and adaptive render resolution (up to 2× on desktop, 1.5× on phones).
+- Merging adjacent chunk requests was tried and dropped: requests merged only 0–30% in typical views.
+- `hosting/cdn-setup.sh` puts Cloud CDN and a custom domain in front of the bucket (about $18/month).
+  It's optional and not in use.
+
+## Project layout
+
+```
+clean/clean_cloud.py      clean + convert any LAS/LAZ/COPC/PLY to COPC (+ dataset.json, review report)
+clean/speckle.py          the color-speckle score
+clean/run_ggp.py          the original Golden Gate Park run (kept for reference)
+sky/                      Viansa's one-off sky-fringe score (stored in Intensity)
+hosting/gcs-setup.sh      bucket, publish data, deploy site, range-request check   (settings: hosting/.env)
+hosting/cdn-setup.sh      optional Cloud CDN + custom domain
+viewer/index.html         page shell, link-preview tags
+viewer/src/main.js        settings, toolbar, panels, share links, keys, loading
+viewer/src/tour.js        guided tour
+viewer/src/tools.js       measurements, axis gizmo, screenshots
+viewer/src/analytics.js   analytics events
+viewer/public/            datasets.json, datasets.sample.json, sample cloud, thumbnails, Potree bundle
+viewer/patches/           our changes to Potree 1.8.2 (shader filters)
+viewer/vite.config.js     dev range server for out/, build-time .env injection
+```
+
+## Rebuilding Potree
+
+The viewer ships a built Potree 1.8.2 with a small shader patch (reflectivity and height filters,
+tagged `[ggp]`). You only need this to change Potree itself:
 
 ```sh
 cd viewer
@@ -115,85 +247,29 @@ git -C vendor/potree-1.8.2 apply ../../patches/potree-1.8.2-ggp.patch
 npm run sync-potree     # copies only what the viewer loads into public/potree
 ```
 
-## Analytics
+## Roadmap: Ouster Studio integration
 
-GA4 property **G-Y572VZ4TRZ** (stream 16284157236) plus Tag Manager container **GTM-KBDS6372**, both in
-`viewer/index.html` `<head>` (static, so Google's tag checker finds them). `src/analytics.js` sends viewer
-events through that tag, so nothing has to be configured in GTM; the container loads for anything added
-there later. Don't add a GA4 tag with the same ID inside GTM
-(page views would count twice). Events, each with a `dataset` parameter: `dataset_view`, `cta_click`,
-`share`, `measure`, `screenshot`, `nav_mode`, `xray`, `ortho`, `clean`, `advanced_open`, `viewpoint`.
-In GA4: register `dataset` as an event-scoped custom dimension, and mark `cta_click` as a key event.
-Add `?debug-analytics=1` to log events in the console.
+Goal: every Studio recording opens its SLAM map in this viewer. Studio already produces the input:
+**Outputs → SLAM → PLY**, which `clean_cloud.py` turns into a viewer-ready COPC (section 2).
 
-## Plan: a forkable viewer that Ouster Studio can embed
+1. **Forkable** (done): settings in `.env` files, UI switches, `?config=`, a bundled sample, CI.
+2. **Open any map by URL:** `?src=<copc url>&title=…` opens one cloud with no `datasets.json` entry
+   (camera framed from the file, color modes picked from what it contains). Studio embeds it in an
+   iframe with `ui` switches off and a small `postMessage` API: `flyTo`, `startTour`, `viewChanged`.
+3. **Automatic per recording:** after Studio's SLAM job writes the PLY, run
+   `clean_cloud.py` in a container (PDAL + untwine + scipy), store `maps/<recording>/<version>.copc.laz`
+   with its `dataset.json` and review report, and save the map URL on the recording. Keep return
+   number and signal in the export: they enable dual-return and low-signal filtering.
+4. **Private recordings:** short-lived signed URLs for the map (the viewer only needs range-request
+   access), or a getter hook that adds Studio's auth to each request.
+5. **Component** (only if an iframe isn't enough): `mountViewer(el, { src, ui, onEvent })` as a library
+   build.
 
-Goal: any Studio dataset opens its associated map in this viewer (same tools, cleaning, tour), and anyone
-can fork the repo and point it at their own data without touching code. Status: **plan, not built.**
+**Open questions for the Studio team:** where the SLAM PLY lives, and whether the pipeline can run next
+to it; which recordings have color (OS1 Max) vs reflectivity only; whether signed URLs are acceptable;
+and whether tours should be authored or generated.
 
-### Where it is coupled today
+## License
 
-| Coupling | Where | Change |
-|---|---|---|
-| Dataset list is one static file baked into the site | `viewer/public/datasets.json` | load config from a URL / page params / the embedding page |
-| Data must be public, read straight from one bucket | `datasets.json` `url`, `hosting/gcs-setup.sh` | pluggable fetch: public URL, signed URL, or an auth header / proxy |
-| GA4 + GTM IDs hard-coded | `viewer/index.html` `<head>`, `src/analytics.js` | build-time env (`VITE_GA4_ID`, `VITE_GTM_ID`); off when unset |
-| Link-preview tags point at our bucket | `viewer/index.html` `og:*` | build-time env or generated per deploy |
-| Bucket/project names | `hosting/gcs-setup.sh`, `clean/clean_cloud.py` (`dataset.json` url) | env vars only (`BUCKET`, `PROJECT`, `DATA_BASE_URL`) |
-| Marketing UI always on (switcher, CTA, tour button) | `src/main.js` | feature flags per embed: `switcher`, `cta`, `tour`, `share`, `measure` |
-| Cleaning assumes RGB (`hold` when missing) | `clean/clean_cloud.py` `qa_report` | reflectivity-only maps: noise class only, no speckle, no hold |
-| No license for our code | repo root | add a LICENSE (Potree is BSD-2-Clause, keep its notice) |
-
-### Phase 0: fork-ready (small, no behavior change)
-1. Move every deployment-specific value into `viewer/.env` / `hosting/.env` (`.env.example` committed):
-   analytics IDs, site URL for `og:*`, bucket, project, data base URL.
-2. Feature flags in `datasets.json` (`"ui": { "switcher": true, "cta": true, "tour": true, ... }`) and per dataset.
-3. LICENSE, CONTRIBUTING (how to add a dataset, run cleaning, deploy), a smoke test (`npm run build` +
-   a headless load of one small COPC) in CI.
-4. Ship a tiny sample COPC (a few MB) so a fresh fork runs locally with no bucket.
-
-### Phase 1: open any map by URL (the embed contract)
-- **Single-dataset mode:** `index.html?src=<copc url>&title=...` opens one cloud with no `datasets.json`
-  entry: camera framed from the COPC header, color modes picked from what the file has (RGB if present,
-  else reflectivity + height), budget from the point count. Optional `&config=<url to a dataset JSON>`
-  for copy, viewpoints, tour, cleaning presets (the same shape `clean_cloud.py` already writes as
-  `<id>.dataset.json`).
-- **Iframe embed for Studio:** `<iframe src=".../viewer/index.html?src=...&ui=embed">`, plus a small
-  `postMessage` API: viewer → host `ready`, `viewChanged`, `measure`; host → viewer `setDataset`,
-  `flyTo`, `startTour`, `setColor`. An iframe keeps Potree's globals (jQuery, workers, `window.Potree`)
-  out of Studio's app, which is why it comes before a component.
-- Share links keep working inside an embed (camera + measurements in the hash).
-
-### Phase 2: Studio datasets produce a viewer-ready map automatically
-Pipeline per dataset (a containerized job: PDAL + untwine + scipy, the `pc` env):
-1. OSF → map: Studio's existing SLAM/accumulation output (or `ouster-cli ... slam ... accum` /
-   save to LAS). **Keep return number, signal and reflectivity in the export:** they unlock the
-   dual-return and low-signal filters this viewer could not offer for Golden Gate Park.
-2. `clean_cloud.py IN OUT --id <dataset id> --capture drone|walk` → COPC (every point kept, noise and
-   speckle classified) + `dataset.json` + `qa.png` / `qa.json`.
-3. Publish under an immutable, versioned key (`maps/<dataset id>/<version>.copc.laz`; the 1-year cache
-   rule from this repo still applies); a `hold` QA status flags the map for review instead of publishing.
-4. Store the map URL + `dataset.json` on the Studio dataset record; the dataset page embeds the viewer
-   with `?src=` (Phase 1).
-- Cost/time reference: Golden Gate Park (1.41 B points) ≈ 15-25 min cleaning + 16 min merge on a
-  10-core Mac; a 7.6 M-point walk ≈ 20 s. Large jobs need ~32 GB RAM (2 workers).
-
-### Phase 3: private data
-Studio datasets are not public. COPC streams by hundreds of HTTP range requests per view, so access must
-work per request without a login round trip:
-- **Simplest:** short-lived signed URLs (e.g. 12 h) minted by Studio for the map object; the viewer gets
-  the signed URL as `src`. Needs CORS on the bucket for Studio's origin (GET/HEAD, expose
-  `Content-Range`/`Accept-Ranges`; see `hosting/gcs-cors.json`).
-- **If URLs must not leak:** a pluggable getter (wrap `pc.pcoGeometry.getter`, the same hook used for
-  experiments in this repo) that adds Studio's auth header, or a Studio range proxy.
-
-### Phase 4: a real component (only if Studio needs deeper integration than an iframe)
-Vite library build exporting `mountViewer(el, { datasets | src, ui, getter, onEvent })`; Potree loaded
-once as a global script by the host page. Analytics become `onEvent` callbacks so Studio routes events to
-its own analytics instead of GA4.
-
-### Open questions for the Studio team
-- What does Studio store per dataset today: SLAM map files (format?), share IDs (`studio.ouster.com/share/<id>`)?
-- Where do maps live (GCS? S3?), and is per-request signed access acceptable?
-- Which maps are RGB (OS1 Max) vs reflectivity-only, and should cleaning run for both?
-- Does Studio want tours/viewpoints authored per dataset (the `P` key flow), or auto-generated ones?
+Not yet chosen; until then, all rights reserved. Potree is BSD-2-Clause
+(`viewer/public/potree/build/potree/LICENSE`).

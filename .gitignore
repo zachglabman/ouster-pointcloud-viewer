@@ -1,10 +1,11 @@
-# data (multi-GB; lives in gs://ouster-pointcloud-viewer/pointclouds/)
+# data (multi-GB; lives in the bucket under pointclouds/)
 in/
 out/
 tmp/
 inspect/
 *.las
 *.laz
+!viewer/public/sample/*.copc.laz
 *.ply
 *.npy
 *.log
@@ -18,3 +19,9 @@ viewer/vendor/
 .DS_Store
 clean/tiles/
 clean/*.out
+
+# local settings (copy the .env.example files)
+.env
+
+__pycache__/
+*.pyc

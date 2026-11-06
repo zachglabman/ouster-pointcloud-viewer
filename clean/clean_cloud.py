@@ -13,8 +13,10 @@ and the viewer hides them (Clean button + Advanced sliders), so cleaning is reve
                                          ground (sand paths, curbs) next to dense plants isn't flagged;
                                          sky-colored points still use the mean. drone (default) = mean.
 
-Input: anything PDAL reads (.las/.laz/.copc.laz/.ply). PLY float colors 0..1 and 8-bit colors are
-rescaled to LAS 16-bit. Small inputs (< --whole points) are cleaned in one pass; larger ones are read
+Input: anything PDAL reads (.las/.laz/.copc.laz/.ply), e.g. an Ouster Studio SLAM PLY. PLY float colors
+0..1 and 8-bit colors are rescaled to LAS 16-bit. A reflectivity-like field (reflectivity / intensity /
+signal) becomes LAS Intensity. Maps without color skip the speckle step (it is a color defect) and are
+shown by reflectivity. Small inputs (< --whole points) are cleaned in one pass; larger ones are read
 from COPC in --tile m tiles with a --buffer m overlap (neighborhoods stay complete at tile edges; each
 point is written by exactly one tile; the summed count is checked against the source).
 Non-COPC large inputs are converted to COPC with untwine first.
@@ -60,9 +62,31 @@ def log(path, msg):
     print(line, flush=True)
     with open(path, 'a') as f: f.write(line + '\n')
 
+# Reflectivity-like dims as other tools name them (Ouster SDK / Studio PLY exports, CloudCompare, ...).
+# The viewer reads LAS Intensity, so the first one present becomes Intensity (uint16).
+INTENSITY_ALIASES = ('reflectivity', 'Reflectivity', 'REFLECTIVITY', 'intensity', 'scalar_intensity',
+                     'scalar_Intensity', 'signal', 'Signal', 'SIGNAL', 'scalar_reflectivity')
+
+def normalize_dims(a):
+    """Map a reflectivity-like dimension to Intensity when the input has none (returns a new array)."""
+    names = a.dtype.names
+    if 'Intensity' in names and a['Intensity'].max() > 0: return a
+    src = next((n for n in INTENSITY_ALIASES if n in names), None)
+    if src is None: return a
+    v = a[src].astype(np.float64)
+    if v.max() <= 1.0: v = v * 255.0                      # 0..1 floats -> 0..255 like Ouster reflectivity
+    keep = [n for n in names if n not in ('Intensity', src)]
+    out = np.empty(len(a), dtype=[(n, a.dtype[n]) for n in keep] + [('Intensity', np.uint16)])
+    for n in keep: out[n] = a[n]
+    out['Intensity'] = np.clip(np.round(v), 0, 65535)
+    return out
+
+def has_rgb(a):
+    return 'Red' in a.dtype.names and max(float(a['Red'].max()), float(a['Green'].max()), float(a['Blue'].max())) > 0
+
 def color_scale(a):
     """Multiplier that maps the stored colors to LAS 16-bit."""
-    if 'Red' not in a.dtype.names: return None
+    if not has_rgb(a): return None
     mx = max(float(a['Red'].max()), float(a['Green'].max()), float(a['Blue'].max()))
     if mx <= 1.0: return 65535.0     # PLY floats 0..1
     if mx <= 255: return 257.0       # 8-bit
@@ -75,7 +99,7 @@ def classify(a, scale, walk=False):
     if len(a) > 13:
         cls[outlier_mask(np.stack([a['X'], a['Y'], a['Z']], 1))] = 7
     ok = cls != 7
-    if 'Red' in a.dtype.names and ok.any():
+    if has_rgb(a) and ok.any():          # speckle is a color defect: reflectivity-only maps skip it
         xyz = np.stack([a['X'][ok], a['Y'][ok], a['Z'][ok]], 1)
         rgb = np.stack([a['Red'][ok], a['Green'][ok], a['Blue'][ok]], 1).astype(np.float64) * (scale / 65535.0)
         q = np.zeros(len(a), np.uint8)
@@ -115,7 +139,11 @@ def render_panels(a, size=(560, 360), win=40.0):
     u = x1; v = c[:, 2] * np.cos(el) + y1 * np.sin(el); depth = y1 * np.cos(el) - c[:, 2] * np.sin(el)
     W, H = size; res = win / W
     m = (np.abs(u) < W * res / 2) & (np.abs(v) < H * res / 2)
-    rgb = np.stack([a['Red'], a['Green'], a['Blue']], 1) / 65535.0
+    if has_rgb(a):
+        rgb = np.stack([a['Red'], a['Green'], a['Blue']], 1) / 65535.0
+    else:                                   # reflectivity-only map: grayscale, stretched to the 99th percentile
+        g = a['Intensity'].astype(np.float64) if 'Intensity' in a.dtype.names else np.full(len(a), 128.0)
+        g = np.clip(g / max(np.percentile(g, 99), 1), 0, 1) ** 0.5; rgb = np.stack([g, g, g], 1)
     cls = a['Classification']; bad = (cls == 7) | (cls >= 67)
     out = []
     for mode in ('orig', 'flag', 'clean'):
@@ -136,8 +164,8 @@ def qa_report(copc, base, n, noise, speck, logf):
     """Sample 3 windows (densest, typical, most-flagged) from the output and render before/flagged/after."""
     p = pdal.Pipeline(json.dumps([{'type': 'readers.copc', 'filename': copc, 'resolution': 2.0}])); p.execute()
     a = p.arrays[0]
-    if 'Red' not in a.dtype.names or a['Red'].max() == 0:
-        status, reasons = 'hold', ['no RGB: the speckle classes are meaningless without color']
+    if not has_rgb(a) and ('Intensity' not in a.dtype.names or a['Intensity'].max() == 0):
+        status, reasons = 'hold', ['no RGB and no reflectivity: nothing to color the points by']
         json.dump({'status': status, 'reasons': reasons}, open(base + '.qa.json', 'w'), indent=2); return status
     C = 40.0
     gx = np.floor(a['X'] / C).astype(np.int64); gy = np.floor(a['Y'] / C).astype(np.int64)
@@ -188,7 +216,7 @@ def tile_job(args):
                                        'bounds': f'([{x0 - B},{x0 + T + B}],[{y0 - B},{y0 + T + B}])'}] + NOISE))
         if p.execute() == 0:
             open(done, 'w').write('0'); return 0
-        a = p.arrays[0]
+        a = normalize_dims(p.arrays[0])
         a = classify(a, G['scale'], G['walk'])          # one scale for all tiles: a dark tile could look 8-bit
         a = a[(a['X'] >= x0) & (a['X'] < x0 + T) & (a['Y'] >= y0) & (a['Y'] < y0 + T)]
         if len(a):
@@ -209,6 +237,9 @@ def main():
     ap.add_argument('--id'); ap.add_argument('--tile', type=float, default=100); ap.add_argument('--buffer', type=float, default=3)
     ap.add_argument('--workers', type=int, default=2); ap.add_argument('--whole', type=float, default=40e6)
     ap.add_argument('--capture', choices=('drone', 'walk'), default='drone', help='walk: own-surface speckle reference (ground-level captures)')
+    ap.add_argument('--data-url', default=os.environ.get('DATA_BASE_URL', ''),
+                    help='base URL the COPC will be served from, for the dataset.json "url" (env DATA_BASE_URL); '
+                         'default: the dev server path /data/<file>')
     a = ap.parse_args()
     out_copc = a.out + '.copc.laz'; logf = a.out + '.clean.log'
     os.makedirs(os.path.dirname(os.path.abspath(out_copc)), exist_ok=True)
@@ -220,7 +251,7 @@ def main():
 
     if n_src <= a.whole:
         p = pdal.Pipeline(json.dumps([{'type': 'readers.' + ('ply' if src.lower().endswith('.ply') else 'copc' if src.endswith('.copc.laz') else 'las'), 'filename': src}] + NOISE))
-        p.execute(); arr = p.arrays[0]
+        p.execute(); arr = normalize_dims(p.arrays[0])
         scale = color_scale(arr) or 1.0
         log(logf, f'whole-file pass, color scale x{scale:g}')
         arr = to_las16(classify(arr, scale, a.capture == 'walk'), scale)
@@ -235,6 +266,7 @@ def main():
                 link = os.path.join(indir, os.path.basename(src))
                 if not os.path.exists(link): os.symlink(src, link)    # untwine scans dirs; a lone symlink avoids .DS_Store
                 subprocess.check_call([os.path.join(BIN, 'untwine'), '-i', indir, '-o', conv, '--temp_dir', a.out + '.tmp'])
+                shutil.rmtree(a.out + '.tmp', ignore_errors=True)
             src = conv
         tdir = a.out + '.tiles'; os.makedirs(tdir, exist_ok=True)
         T = a.tile
@@ -254,6 +286,7 @@ def main():
         tin = a.out + '.tiles_in'; shutil.rmtree(tin, ignore_errors=True); os.makedirs(tin)
         for f in glob.glob(os.path.join(tdir, '*.laz')): os.symlink(os.path.abspath(f), os.path.join(tin, os.path.basename(f)))  # relative targets would dangle
         subprocess.check_call([os.path.join(BIN, 'untwine'), '-i', tin, '-o', out_copc, '--temp_dir', a.out + '.tmp'])
+        shutil.rmtree(a.out + '.tmp', ignore_errors=True)    # untwine leaves its scratch files (126 GB for Golden Gate Park)
 
     # verify + summarize
     s = json.loads(subprocess.check_output([os.path.join(BIN, 'pdal'), 'info', '--summary', out_copc]))['summary']
@@ -266,6 +299,8 @@ def main():
     counts = {int(float(c.split('/')[0])): int(c.split('/')[1]) for c in byname['Classification'].get('counts', [])}
     noise = counts.get(7, 0) / n_copc; speck = sum(v for k, v in counts.items() if k >= 67) / n_copc
     has_int = byname['Intensity']['maximum'] > 0
+    probe = pdal.Pipeline(json.dumps([{'type': 'readers.copc', 'filename': out_copc, 'resolution': 20}])); probe.execute()
+    rgb = has_rgb(probe.arrays[0])
     b = s['bounds']; ext = (b['maxx'] - b['minx'], b['maxy'] - b['miny'])
     log(logf, f'OK {out_copc}: {n_copc:,} pts (matches source), noise {noise:.2%}, speckle hidden by default {speck:.2%}')
     qa_report(out_copc, a.out, n_copc, noise, speck, logf)
@@ -276,16 +311,18 @@ def main():
     r = max(ext) * 0.6
     entry = {
         'id': did, 'name': did, 'title': did,
-        'url': f'https://storage.googleapis.com/ouster-pointcloud-viewer/pointclouds/{os.path.basename(out_copc)}',
+        'url': (a.data_url.rstrip('/') + '/' if a.data_url else 'data/') + os.path.basename(out_copc),
         'thumbnail': f'thumbs/{did}.jpg',
-        'description': 'Point cloud of <place>, captured <by drone | on a walk> with an Ouster OS1 Max. ...',
-        'facts': ['Ouster OS1 Max', '<Drone | Walking> capture', pts, f'~{ext[0]:.0f} × {ext[1]:.0f} m', 'Reflectivity + RGB' if has_int else 'Full RGB'],
+        'description': 'Point cloud of <place>, captured <by drone | on a walk> with an Ouster <sensor>. ...',
+        'facts': ['Ouster <sensor>', '<Drone | Walking> capture', pts, f'~{ext[0]:.0f} × {ext[1]:.0f} m',
+                  ('Reflectivity + RGB' if has_int else 'Full RGB') if rgb else 'Reflectivity'],
         'camera': {'position': [round(cx + r * 0.5), round(cy - r * 0.8), round(r * 0.5)], 'target': [round(cx), round(cy), 0]},
         'autoOrbit': True, 'viewpoints': [],
-        'noiseClassified': True, 'speckle': {'default': 65}, 'clean': {'zBand': None},
-        'colorMode': 'rgb',
-        'colorModes': ({'rgb': {'label': 'RGB', 'attribute': 'rgba'}, 'reflectivity': {'label': 'Reflectivity', 'attribute': 'intensity', 'range': [0, 40]}}
-                       if has_int else {'rgb': {'label': 'RGB', 'attribute': 'rgba'}}),
+        'noiseClassified': True, 'clean': {'zBand': None},
+        **({'speckle': {'default': 65}} if rgb else {}),
+        'colorMode': 'rgb' if rgb else 'reflectivity',
+        'colorModes': {**({'rgb': {'label': 'RGB', 'attribute': 'rgba'}} if rgb else {}),
+                       **({'reflectivity': {'label': 'Reflectivity', 'attribute': 'intensity', 'range': [0, 40]}} if has_int else {})},
         'pointBudget': 8000000, 'maxFlySpeed': int(min(150, max(30, max(ext) / 8))),
     }
     json.dump(entry, open(a.out + '.dataset.json', 'w'), indent=2, ensure_ascii=False)

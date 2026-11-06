@@ -2,25 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <!-- Google tag (GA4 G-Y572VZ4TRZ) + Tag Manager GTM-KBDS6372. Viewer events: src/analytics.js -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-Y572VZ4TRZ"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-Y572VZ4TRZ');
-    (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s);j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','GTM-KBDS6372');
-  </script>
+  <!-- analytics: injected at build time from VITE_GA4_ID / VITE_GTM_ID (.env), see vite.config.js -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Ouster Point Cloud Viewer</title>
   <meta name="description" content="Explore Ouster OS1 Max point clouds in your browser: fly through, switch between true color and reflectivity, measure, and share a view.">
-  <!-- link previews (Slack, LinkedIn, iMessage, X). og:image must be an absolute URL. -->
+  <!-- link previews (Slack, LinkedIn, iMessage, X). og:url/og:image need an absolute URL: their placeholder is replaced with VITE_SITE_URL
+       (.env); without it those two tags are dropped at build time. Title/description: edit here. -->
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Ouster">
   <meta property="og:title" content="Ouster OS1 Max point clouds">
   <meta property="og:description" content="Fly through drone and walking lidar captures in your browser. Switch between true color and reflectivity, measure, and share a view.">
-  <meta property="og:url" content="https://storage.googleapis.com/ouster-pointcloud-viewer/viewer/index.html">
-  <meta property="og:image" content="https://storage.googleapis.com/ouster-pointcloud-viewer/viewer/og.jpg">
+  <meta property="og:url" content="__SITE_URL__/index.html">
+  <meta property="og:image" content="__SITE_URL__/og.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="Colorized lidar point cloud of Golden Gate Park: trees, lawns, paths and a monument">

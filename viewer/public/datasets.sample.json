@@ -1,0 +1,28 @@
+{
+  "default": "sample",
+  "ui": { "switcher": true, "cta": true, "tour": true, "share": true, "measure": true, "image": true, "advanced": true },
+  "datasets": [
+    {
+      "id": "sample",
+      "name": "Sample",
+      "title": "Sample: Viansa Winery",
+      "url": "sample/viansa-sample.copc.laz",
+      "description": "A 450,000-point excerpt of an Ouster OS1 Max walking capture, bundled with the repo so a fresh copy runs with no bucket. Replace it with your own data (see README).",
+      "facts": ["Ouster OS1 Max", "Walking capture", "0.45 M points", "~110 × 130 m", "Full RGB"],
+      "cta": { "label": "Ouster Studio", "url": "https://studio.ouster.com/" },
+      "camera": { "position": [95, -55, 35], "target": [40, 5, 0] },
+      "viewpoints": [{ "name": "Overview", "position": [95, -55, 35], "target": [40, 5, 0] }],
+      "tour": [
+        { "name": "The winery", "chip": "Tour stop 1", "caption": "Each stop has a title, a chip and a caption. Edit them in the dataset's \"tour\" list.", "position": [95, -55, 35], "target": [45, 0, 2], "hold": 5 },
+        { "name": "The terrace", "chip": "Tour stop 2", "caption": "Fly to a spot in the viewer and press P to copy its camera for a new stop.", "position": [55, -45, 12], "target": [22, -12, 1], "hold": 5 }
+      ],
+      "noiseClassified": true,
+      "speckle": { "default": 65 },
+      "clean": { "zBand": null },
+      "colorMode": "rgb",
+      "colorModes": { "rgb": { "label": "RGB", "attribute": "rgba" } },
+      "pointBudget": 2000000,
+      "maxFlySpeed": 30
+    }
+  ]
+}

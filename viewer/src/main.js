@@ -13,7 +13,7 @@
 //        ?stats=1 HUD, ?dev=1 dev datasets, ?advanced=1 open panel
 
 import { createTools, createGizmo, screenshot, KINDS } from './tools.js';
-import { initAnalytics, track } from './analytics.js';
+import { track } from './analytics.js';
 import { createTour } from './tour.js';
 
 const T0 = performance.now();
@@ -21,9 +21,14 @@ const params = new URLSearchParams(location.search);
 const $ = (s) => document.querySelector(s);
 const isTouch = matchMedia('(pointer: coarse)').matches;
 
-const cfg = await (await fetch('datasets.json', { cache: 'no-cache' })).json();
+// ?config=<file>.json picks another dataset list from the same site (e.g. datasets.sample.json). Relative
+// paths only: a link must not be able to load someone else's datasets and links under this domain.
+const cfgPath = params.get('config');
+const cfgFile = cfgPath && /^(?!.*\.\.)[\w.-]+(\/[\w.-]+)*\.json$/.test(cfgPath) ? cfgPath : 'datasets.json';
+const cfg = await (await fetch(cfgFile, { cache: 'no-cache' })).json();
 const datasets = cfg.datasets.filter((d) => !d.dev || params.has('dev'));
-initAnalytics(cfg.analytics);
+// UI switches ("ui" in the config): turn off the parts an embed doesn't need.
+const UI = { switcher: true, cta: true, tour: true, share: true, measure: true, image: true, advanced: true, ...cfg.ui };
 const ev = (name, p = {}) => track(name, { dataset: state.activeId, ...p });
 
 const DEFAULT_COLOR_MODES = {
@@ -67,7 +72,7 @@ viewer.addEventListener('render.pass.end', () => {
 window.tour = tour;
 function startTour(at = 0) {
   const ds = activeDs();
-  if (!ds?.tour?.length) return;
+  if (!UI.tour || !ds?.tour?.length) return;
   stopAutoOrbit(); tools.cancel();
   if (S.nav !== 'orbit') setNav('orbit');
   if (S.ortho) setOrtho(false);
@@ -430,9 +435,9 @@ function renderInfo() {
   if (!ds) return card.replaceChildren();
   const collapsed = store.get('infoCollapsed', isTouch);
   const ctaUrl = ds.cta?.url || ds.studioUrl;
-  const cta = ctaUrl ? el('a', { className: 'cta', href: ctaUrl, target: '_blank', rel: 'noopener', textContent: (ds.cta?.label || 'See Full Dataset') + ' →',
+  const cta = UI.cta && ctaUrl ? el('a', { className: 'cta', href: ctaUrl, target: '_blank', rel: 'noopener', textContent: (ds.cta?.label || 'See Full Dataset') + ' →',
     onclick: () => track('cta_click', { dataset: ds.id, url: ctaUrl }) }) : null;
-  const tourBtn = ds.tour?.length ? el('button', { className: 'tour-btn', textContent: tour.active ? '■ End tour' : '▶ Take the tour',
+  const tourBtn = UI.tour && ds.tour?.length ? el('button', { className: 'tour-btn', textContent: tour.active ? '■ End tour' : '▶ Take the tour',
     title: tour.active ? 'Stop the tour here' : `About ${Math.max(1, Math.round(ds.tour.reduce((t, x) => t + (x.hold ?? 6) + 5, 0) / 60))} min, ${ds.tour.length} stops. Drag any time to take over.`,
     onclick: () => (tour.active ? tour.stop('close') : startTour()) }) : null;
   const vps = ds.viewpoints?.length ? el('div', { className: 'vps' }, el('span', { textContent: 'Jump to' }),
@@ -466,16 +471,16 @@ function renderToolbar() {
   if (!ds) return tb.replaceChildren();
   let modes = ds.colorModes || DEFAULT_COLOR_MODES;
   if (Object.keys(modes).length < 2) modes = colorModesOf(ds); // RGB-only data: offer Height as the second look
-  tb.replaceChildren(
+  tb.replaceChildren(...[ // filter: replaceChildren would print switched-off (null) items as "null"
     seg(Object.entries(modes).map(([k, m]) => [k, m.label]), S.colorKey, setColor, { className: 'seg tb-seg' }),
     popBtn('nav', NAV_LABEL[S.nav] + (S.ortho ? ' · Ortho' : ''), 'Navigation, projection and views'),
     popBtn('display', '◐ Display', 'X-ray, eye-dome lighting, point size'),
-    isTouch ? null : popBtn('measure', '⟷ Measure', 'Distance, height, area, point (M)', tools.inserting != null || tools.count(state.activeId) > 0),
+    isTouch || !UI.measure ? null : popBtn('measure', '⟷ Measure', 'Distance, height, area, point (M)', tools.inserting != null || tools.count(state.activeId) > 0),
     toggle('✦ Clean', S.clean, () => { ev('clean', { on: !S.clean }); setClean(!S.clean); }, ds.skyFilter ? 'Hide stray points and sky-colored fringe on edges' : ds.speckle ? 'Hide stray points and mis-colored speckle' : 'Hide stray points (noise below ground and in the air)'),
-    el('button', { className: 'tb', textContent: '⤓ Image', title: 'Save a screenshot (PNG)', onclick: () => { ev('screenshot'); screenshot(viewer, `${ds.id}-view`).then(() => toast('Screenshot saved')); } }),
-    el('button', { className: 'tb', textContent: '↗ Share', title: 'Copy a link to exactly this view (includes measurements)', onclick: share }),
-    toggle('⚙', state.advanced, () => { state.advanced = !state.advanced; if (state.advanced) ev('advanced_open'); renderAll(); }, 'Advanced controls'),
-  );
+    !UI.image ? null : el('button', { className: 'tb', textContent: '⤓ Image', title: 'Save a screenshot (PNG)', onclick: () => { ev('screenshot'); screenshot(viewer, `${ds.id}-view`).then(() => toast('Screenshot saved')); } }),
+    !UI.share ? null : el('button', { className: 'tb', textContent: '↗ Share', title: 'Copy a link to exactly this view (includes measurements)', onclick: share }),
+    !UI.advanced ? null : toggle('⚙', state.advanced, () => { state.advanced = !state.advanced; if (state.advanced) ev('advanced_open'); renderAll(); }, 'Advanced controls'),
+  ].filter(Boolean));
   const hint = $('#hint');
   hint.textContent = tools.inserting ? ''
     : S.nav === 'fly' ? 'WASD move · E/Q up/down · drag to look · scroll = speed · Shift boost · G to exit'
@@ -627,7 +632,7 @@ function renderSwitcher() {
   const live = datasets.filter((d) => d.url);
   const sw = $('#switcher');
   // A lone dataset doesn't need a switcher; placeholders only show once there are 2+ real datasets.
-  if (live.length < 2) return sw.replaceChildren();
+  if (!UI.switcher || live.length < 2) return sw.replaceChildren();
   sw.replaceChildren(...live.map((ds) => { // url:null placeholders stay out of the UI
     const thumb = ds.thumbnail ? el('img', { src: ds.thumbnail, alt: '' }) : el('span', { className: 'ph' });
     thumb.onerror = () => thumb.replaceWith(el('span', { className: 'ph' }));
@@ -648,7 +653,7 @@ addEventListener('keydown', (e) => {
   else if ((e.metaKey || e.ctrlKey) && k === 'z') { e.preventDefault(); e.shiftKey ? tools.redo() : tools.undo(); }
   else if (e.metaKey || e.ctrlKey || e.altKey) return;
   else if (k === 'g') setNav(S.nav === 'fly' ? 'orbit' : 'fly');
-  else if (k === 'm' && !isTouch) tools.start('distance');
+  else if (k === 'm' && !isTouch && UI.measure) tools.start('distance');
   else if (k === 'o') setOrtho(!S.ortho);
   else if (k === 'x') setXray(!S.xray);
   else if (k === 't') snapView([0, 0, 1]);
