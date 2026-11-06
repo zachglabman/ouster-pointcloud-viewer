@@ -7,7 +7,8 @@
 //        Orbit: drag rotate, right-drag pan, scroll zoom, double-click = zoom to point
 //        N  cycle noise Show / Hide / Only     P  copy camera JSON (viewpoint authoring)
 //        M  distance   Esc cancel   ⌘Z / ⇧⌘Z undo / redo   O orthographic   X x-ray   T top view
-// URL:   #d=<id>&c=<color>&cam=px,py,pz,tx,ty,tz&m=<measurements> (share links; "#<id>" also works)
+// URL:   #d=<id>&c=<color>&cam=px,py,pz,tx,ty,tz&s=<settings>&m=<measurements> (share links; "#<id>" also works)
+//        s = base64url JSON of the display settings that differ from the dataset's defaults (SHARE_KEYS)
 //        #d=<id>&tour  opens straight into the dataset's guided tour
 // Tour:  ← / → previous / next stop, Space pause, any drag/scroll/other key hands control back
 //        ?stats=1 HUD, ?dev=1 dev datasets, ?advanced=1 open panel
@@ -44,7 +45,7 @@ viewer.fpControls.keys.DOWN.push('Q'.charCodeAt(0));
 
 // Measurements, axis gizmo (tools.js). onChange re-renders the toolbar so Measure shows as active.
 const tools = createTools({ viewer, el: (...a) => el(...a), toast: (m) => toast(m), activeId: () => state.activeId, onChange: () => renderToolbar(), onMeasure: (kind) => ev('measure', { kind }) });
-window.tools = tools; // console access, like window.viewer
+window.tools = tools; // console access, like window.viewer (and window.shareUrl() below)
 const gizmo = createGizmo($('#gizmo'), viewer, (dir) => snapView(dir));
 const tour = createTour({ viewer, el: (...a) => el(...a), root: $('#tour'), onEvent: (n, p) => ev(n, p), onEnd: () => renderInfo(), onPrefetch: (s) => prefetchView(s),
   viewFull: () => { const pc = viewer.scene.pointclouds.find((p) => p.visible); return !!pc && pc.numVisiblePoints >= 0.97 * viewer.getPointBudget(); } });
@@ -108,6 +109,7 @@ const DEFAULTS = {
   xray: false, xrayOpacity: 0.04, // additive: dense areas saturate fast, keep it low
 };
 const S = structuredClone(DEFAULTS);
+window.settings = S;   // console access to the live display settings
 const state = { activeId: null, boost: 1, baseSpeed: null, autoOrbit: false, advanced: params.has('advanced'), pop: null };
 const clouds = new Map();
 // Potree's pick() gets the mouse in CSS px but reads its pick buffer at render size (scaleFactor x CSS).
@@ -353,13 +355,65 @@ async function switchTo(id, { cam = null, color = null } = {}) {
 }
 
 // ---------- share ----------
+// ---------- display settings in share links ----------
+// A share link carries every display setting that differs from what a first-time visitor would see for
+// that dataset (defaults + the dataset's clean preset), so links stay short and open the exact view.
+// Device-specific settings (point budget, LOD threshold, render resolution) stay with the viewer.
+const SHARE_KEYS = ['fov', 'background', 'refl', 'rgb', 'pointSize', 'sizeType', 'shape', 'voxelLevel', 'clean',
+  'noise', 'zBand', 'reflFilter', 'skyCut', 'speckle', 'edl', 'edlStrength', 'edlRadius', 'ortho', 'xray', 'xrayOpacity'];
+const SHARE_ENUMS = { background: ['black', 'gradient', 'white'], sizeType: ['ADAPTIVE', 'FIXED', 'ATTENUATED'],
+  shape: ['SQUARE', 'CIRCLE', 'PARABOLOID'], noise: ['show', 'hide', 'only'] };
+function baselineFor(ds) {
+  const b = structuredClone(DEFAULTS);
+  const refl = (ds.colorModes || DEFAULT_COLOR_MODES).reflectivity;
+  if (refl?.range) b.refl.range = [...refl.range];
+  b.zBand = ds.clean?.zBand ? [...ds.clean.zBand] : null;      // same as setClean(true)
+  b.noise = ds.noiseClassified ? 'hide' : 'show';
+  b.skyCut = ds.skyFilter ? ds.skyFilter.default : 0;
+  b.speckle = ds.speckle ? ds.speckle.default : 0;
+  return b;
+}
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);   // Infinity stringifies as null on both sides
+const b64u = { enc: (s) => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+  dec: (s) => decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/')))) };
+function encodeSettings() {
+  const b = baselineFor(activeDs()), d = {};
+  for (const k of SHARE_KEYS) if (!same(S[k], b[k])) d[k] = S[k] === Infinity ? null : S[k];
+  return Object.keys(d).length ? b64u.enc(JSON.stringify(d)) : '';
+}
+// Shape check against the baseline: right types, finite numbers, known enum values; anything else is dropped.
+function validShared(v, base, k) {
+  if (k === 'voxelLevel') return v === null || Number.isInteger(v);
+  if (k === 'zBand' && v === null) return true;
+  if (typeof base === 'number' || k === 'zBand') return Array.isArray(v) ? v.length === 2 && v.every(Number.isFinite) : Number.isFinite(v);
+  if (typeof base === 'boolean') return typeof v === 'boolean';
+  if (typeof base === 'string') return (SHARE_ENUMS[k] || []).includes(v);
+  if (Array.isArray(base)) return Array.isArray(v) && v.length === base.length && v.every(Number.isFinite);
+  if (base && typeof base === 'object') return v && typeof v === 'object' && Object.keys(base).every((kk) => validShared(v[kk], base[kk], kk + '_'));
+  return false;
+}
+function applySharedSettings(code) {
+  const ds = activeDs(); if (!ds) return;
+  let d = {};
+  try { d = code ? JSON.parse(b64u.dec(code)) : {}; } catch { d = {}; }
+  const b = baselineFor(ds);
+  for (const k of SHARE_KEYS) {
+    const v = k in d && validShared(d[k], b[k], k) ? d[k] : b[k];
+    S[k] = k === 'voxelLevel' && v === null ? Infinity : structuredClone(v);
+  }
+  if (S.ortho && S.nav === 'fly') setNav('orbit');
+  applySettings(); renderAll();
+}
+
+window.shareUrl = () => shareUrl();   // console / tests
 function shareUrl() {
   const v = viewer.scene.view, r = (a) => a.map((x) => Math.round(x * 100) / 100);
   const cam = [...r(v.position.toArray()), ...r(v.getPivot().toArray())].join(',');
   const u = new URL(location.href);
   for (const k of ['stats', 'dev', 'advanced']) u.searchParams.delete(k);
   const m = tools.encode(state.activeId);
-  u.hash = `d=${state.activeId}&c=${S.colorKey}&cam=${cam}` + (m ? `&m=${m}` : '');
+  const s = encodeSettings();
+  u.hash = `d=${state.activeId}&c=${S.colorKey}&cam=${cam}` + (s ? `&s=${s}` : '') + (m ? `&m=${m}` : '');
   return u.toString();
 }
 async function share() {
@@ -380,7 +434,7 @@ function parseHash() {
   const p = new URLSearchParams(h);
   const n = (p.get('cam') || '').split(',').map(Number);
   const cam = n.length === 6 && n.every(Number.isFinite) ? { position: n.slice(0, 3), target: n.slice(3) } : null;
-  return { id: p.get('d'), color: p.get('c'), cam, m: p.get('m'), tour: p.has('tour') };
+  return { id: p.get('d'), color: p.get('c'), cam, m: p.get('m'), s: p.get('s'), tour: p.has('tour') };
 }
 
 let toastTimer;
@@ -767,16 +821,18 @@ viewer.addEventListener('update', () => {
 // Share links pasted into an already-open viewer only change the hash (no reload): apply them.
 addEventListener('hashchange', async () => {
   const h = parseHash();
-  if (h.id && h.id !== state.activeId) { await switchTo(h.id, { cam: h.cam, color: h.color }); if (h.m) tools.decode(h.id, h.m); if (h.tour) startTour(); return; }
+  if (h.id && h.id !== state.activeId) { await switchTo(h.id, { cam: h.cam, color: h.color }); if (h.cam || h.s) applySharedSettings(h.s); if (h.m) tools.decode(h.id, h.m); if (h.tour) startTour(); return; }
   if (h.tour) { startTour(); return; }
   if (h.color && colorModesOf(activeDs())[h.color]) setColor(h.color);
   if (h.cam) { stopAutoOrbit(); viewer.scene.view.setView(h.cam.position, h.cam.target, 0); }
+  if (h.cam || h.s) applySharedSettings(h.s);   // a share link: its display settings (or the defaults)
   if (h.m) tools.decode(state.activeId, h.m);
 });
 
 const fromHash = parseHash();
 const initial = datasets.find((d) => d.id === fromHash.id && d.url)?.id || cfg.default;
 await switchTo(initial, { cam: fromHash.cam, color: fromHash.color });
+if (fromHash.s && fromHash.id === initial) applySharedSettings(fromHash.s);
 if (fromHash.m && fromHash.id === initial) tools.decode(initial, fromHash.m);
 if (fromHash.tour && fromHash.id === initial) startTour();
 

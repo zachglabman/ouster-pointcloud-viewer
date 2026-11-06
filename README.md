@@ -20,6 +20,8 @@ measure, and share a link to an exact view.
   *classified*, and the viewer hides them (Clean button), so it's reversible.
 - Guided tours with captions, measurements (distance, height, area, point), orthographic and X-ray
   views, eye-dome lighting, screenshots, and share links that carry the camera and measurements.
+- **Share** copies a link that reopens the exact view: camera, color mode, measurements, and every display
+  setting you changed (Clean and its sliders, X-ray, orthographic, eye-dome lighting, point size, FOV, ...).
 - Built on [Potree 1.8.2](https://github.com/potree/potree) (WebGL) and [Vite](https://vitejs.dev).
 
 ---
@@ -160,11 +162,15 @@ sh hosting/gcs-setup.sh site              # builds the viewer and uploads it
 
 | Parameter | Meaning |
 |---|---|
-| `#d=<id>&cam=…&m=…` | dataset, camera, measurements (what **Share** copies) |
+| `#d=<id>&c=…&cam=…&s=…&m=…` | what **Share** copies: dataset, color mode, camera, display settings, measurements. Opens the exact view |
 | `#d=<id>&tour` | open straight into the guided tour |
 | `?config=<file>.json` | another dataset list from the same site (relative paths only) |
 | `?stats=1`, `?advanced=1`, `?dev=1` | performance overlay, open the Advanced panel, list `dev` datasets |
 | `?debug-analytics=1` | log analytics events to the console |
+
+`s=` holds only the settings that differ from the dataset's defaults (base64url JSON; unknown or malformed
+values are ignored), so an unchanged view's link stays short. Point budget, LOD threshold and render
+resolution stay with each device.
 
 Touch: one finger orbits, two fingers pinch to zoom and drag to pan, double-tap dives in.
 
