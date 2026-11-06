@@ -60,6 +60,7 @@ const DEFAULTS = {
   zBand: null,                   // [zmin, zmax] world Z; null = full extent
   reflFilter: [0, 255],
   skyCut: 0,                     // 0-100 % sky-fringe removal (datasets with a skyFilter score in Intensity)
+  speckle: 0,                    // 0-100 % color-speckle removal (datasets with speckle bands in classes 65-71)
   edl: true, edlStrength: 1, edlRadius: 1.4,
   ortho: false,
   xray: false, xrayOpacity: 0.04, // additive: dense areas saturate fast, keep it low
@@ -80,6 +81,9 @@ function patchPick(pc) {
   };
   proto.__scaledPick = true;
 }
+const SPECKLE_CLASSES = [65, 66, 67, 68, 69, 70, 71];
+// Register them with a color: Potree's classification LUT crashes on entries without one.
+for (const c of SPECKLE_CLASSES) viewer.classifications[c] ??= { visible: true, name: `speckle ${c - 64}`, color: [0.9, 0.3, 0.9, 1] };
 const budgetFor = (ds) => Math.min((ds?.pointBudget || 8e6) / 1e6, isTouch ? 2 : 99);
 
 // ---------- render resolution ----------
@@ -174,9 +178,18 @@ function applySettings() {
   viewer.setEDLRadius(S.edlRadius);
   viewer.setPointBudget(S.budgetM * 1e6);
   viewer.setMinNodeSize(S.lodPx * viewer.scaleFactor); // Potree measures node size in render pixels
-  for (const key of Object.keys(viewer.classifications)) {
-    const isNoise = key === '7';
-    viewer.setClassificationVisibility(key, S.noise === 'show' ? true : S.noise === 'hide' ? !isNoise : isNoise);
+  // Classes: 7 = floating noise; 65..71 = color-speckle bands (band b holds scores 32b..32b+31, see clean/run_ggp.py).
+  // Strength s% hides bands whose score >= 256 - 2.56 s (65% -> score >= 96).
+  const cut = 256 - 2.56 * S.speckle;
+  const keys = new Set([...Object.keys(viewer.classifications), ...SPECKLE_CLASSES.map(String)]);
+  for (const key of keys) {
+    const c = Number(key), isNoise = c === 7, band = c - 64;
+    const isSpeckle = band >= 1 && band <= 7;
+    const visible = S.noise === 'only' ? isNoise
+      : isNoise ? S.noise === 'show'
+      : isSpeckle ? 32 * band < cut
+      : true;
+    viewer.setClassificationVisibility(key, visible);
   }
   forClouds((pc) => {
     const m = pc.material;
@@ -200,6 +213,7 @@ function setClean(on) {
   S.zBand = on && ds?.clean?.zBand ? [...ds.clean.zBand] : null;
   S.noise = on && ds?.noiseClassified ? 'hide' : 'show';
   S.skyCut = on && ds?.skyFilter ? ds.skyFilter.default : 0;
+  S.speckle = on && ds?.speckle ? ds.speckle.default : 0;
   applySettings(); renderAll();
 }
 
@@ -405,7 +419,7 @@ function renderToolbar() {
     popBtn('nav', NAV_LABEL[S.nav] + (S.ortho ? ' · Ortho' : ''), 'Navigation, projection and views'),
     popBtn('display', '◐ Display', 'X-ray, eye-dome lighting, point size'),
     isTouch ? null : popBtn('measure', '⟷ Measure', 'Distance, height, area, point (M)', tools.inserting != null || tools.count(state.activeId) > 0),
-    toggle('✦ Clean', S.clean, () => { ev('clean', { on: !S.clean }); setClean(!S.clean); }, ds.skyFilter ? 'Hide stray points and sky-colored fringe on edges' : 'Hide stray points (noise below ground and in the air)'),
+    toggle('✦ Clean', S.clean, () => { ev('clean', { on: !S.clean }); setClean(!S.clean); }, ds.skyFilter ? 'Hide stray points and sky-colored fringe on edges' : ds.speckle ? 'Hide stray points and mis-colored speckle' : 'Hide stray points (noise below ground and in the air)'),
     el('button', { className: 'tb', textContent: '⤓ Image', title: 'Save a screenshot (PNG)', onclick: () => { ev('screenshot'); screenshot(viewer, `${ds.id}-view`).then(() => toast('Screenshot saved')); } }),
     el('button', { className: 'tb', textContent: '↗ Share', title: 'Copy a link to exactly this view (includes measurements)', onclick: share }),
     toggle('⚙', state.advanced, () => { state.advanced = !state.advanced; if (state.advanced) ev('advanced_open'); renderAll(); }, 'Advanced controls'),
@@ -533,6 +547,7 @@ function renderPanel() {
       slider('Height min', { min: zMin, max: zMax, step: 0.1, value: band[0], fmt: fmtM, onInput: (v) => { S.zBand = [v, Math.max(band[1], v)]; band[0] = v; applySettings(); } }),
       !hasRefl ? null : slider('Refl. min', { min: 0, max: 100, step: 1, value: S.reflFilter[0], onInput: (v) => { S.reflFilter = [v, S.reflFilter[1]]; applySettings(); }, title: 'Hide low-reflectivity points (dust, rain, edge speckle)' }),
       !hasRefl ? null : slider('Refl. max', { min: 1, max: 255, step: 1, value: S.reflFilter[1], onInput: (v) => { S.reflFilter = [S.reflFilter[0], v]; applySettings(); }, title: 'Hide high-reflectivity points (retroreflector blooming)' }),
+      !ds.speckle ? null : slider('Speckle', { min: 0, max: 100, step: 1, value: S.speckle, fmt: (v) => (v ? v + '%' : 'off'), onInput: (v) => { S.speckle = v; applySettings(); }, title: 'Hide points whose color is much brighter than their surroundings (mis-colored edges, glints)' }),
       !ds.skyFilter ? null : slider('Sky fringe', { min: 0, max: 100, step: 1, value: S.skyCut, fmt: (v) => (v ? v + '%' : 'off'), onInput: (v) => { S.skyCut = v; applySettings(); }, title: 'Hide points on tree/roof edges that picked up sky color during colorization' }),
       el('button', { className: 'link', textContent: 'Reset cleaning', onclick: () => { S.reflFilter = [0, 255]; setClean(false); } }),
     ),
