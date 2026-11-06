@@ -8,10 +8,13 @@
 //        N  cycle noise Show / Hide / Only     P  copy camera JSON (viewpoint authoring)
 //        M  distance   Esc cancel   ⌘Z / ⇧⌘Z undo / redo   O orthographic   X x-ray   T top view
 // URL:   #d=<id>&c=<color>&cam=px,py,pz,tx,ty,tz&m=<measurements> (share links; "#<id>" also works)
+//        #d=<id>&tour  opens straight into the dataset's guided tour
+// Tour:  ← / → previous / next stop, Space pause, any drag/scroll/other key hands control back
 //        ?stats=1 HUD, ?dev=1 dev datasets, ?advanced=1 open panel
 
 import { createTools, createGizmo, screenshot, KINDS } from './tools.js';
 import { initAnalytics, track } from './analytics.js';
+import { createTour } from './tour.js';
 
 const T0 = performance.now();
 const params = new URLSearchParams(location.search);
@@ -38,6 +41,18 @@ viewer.fpControls.keys.DOWN.push('Q'.charCodeAt(0));
 const tools = createTools({ viewer, el: (...a) => el(...a), toast: (m) => toast(m), activeId: () => state.activeId, onChange: () => renderToolbar(), onMeasure: (kind) => ev('measure', { kind }) });
 window.tools = tools; // console access, like window.viewer
 const gizmo = createGizmo($('#gizmo'), viewer, (dir) => snapView(dir));
+const tour = createTour({ viewer, el: (...a) => el(...a), root: $('#tour'), onEvent: (n, p) => ev(n, p), onEnd: () => renderInfo() });
+window.tour = tour;
+function startTour(at = 0) {
+  const ds = activeDs();
+  if (!ds?.tour?.length) return;
+  stopAutoOrbit(); tools.cancel();
+  if (S.nav !== 'orbit') setNav('orbit');
+  if (S.ortho) setOrtho(false);
+  state.pop = null;
+  tour.start(ds, at);
+  renderAll();
+}
 
 // ---------- fly speed cap ----------
 const SPEED_MIN = 0.5, DEFAULT_MAX_SPEED = 150;
@@ -277,6 +292,7 @@ function setCamera(ds, pc, cam) {
 async function switchTo(id, { cam = null, color = null } = {}) {
   const ds = datasets.find((d) => d.id === id && d.url);
   if (!ds || id === state.activeId) return;
+  if (tour.active) tour.stop('switch');
   state.activeId = id;
   history.replaceState(null, '', `${location.search}#d=${id}`); // replaceState fires no hashchange
   S.budgetM = budgetFor(ds);
@@ -326,7 +342,7 @@ function parseHash() {
   const p = new URLSearchParams(h);
   const n = (p.get('cam') || '').split(',').map(Number);
   const cam = n.length === 6 && n.every(Number.isFinite) ? { position: n.slice(0, 3), target: n.slice(3) } : null;
-  return { id: p.get('d'), color: p.get('c'), cam, m: p.get('m') };
+  return { id: p.get('d'), color: p.get('c'), cam, m: p.get('m'), tour: p.has('tour') };
 }
 
 let toastTimer;
@@ -383,6 +399,9 @@ function renderInfo() {
   const ctaUrl = ds.cta?.url || ds.studioUrl;
   const cta = ctaUrl ? el('a', { className: 'cta', href: ctaUrl, target: '_blank', rel: 'noopener', textContent: (ds.cta?.label || 'See Full Dataset') + ' →',
     onclick: () => track('cta_click', { dataset: ds.id, url: ctaUrl }) }) : null;
+  const tourBtn = ds.tour?.length ? el('button', { className: 'tour-btn', textContent: tour.active ? '■ End tour' : '▶ Take the tour',
+    title: tour.active ? 'Stop the tour here' : `About ${Math.max(1, Math.round(ds.tour.reduce((t, x) => t + (x.hold ?? 6) + 5, 0) / 60))} min, ${ds.tour.length} stops. Drag any time to take over.`,
+    onclick: () => (tour.active ? tour.stop('close') : startTour()) }) : null;
   const vps = ds.viewpoints?.length ? el('div', { className: 'vps' }, el('span', { textContent: 'Jump to' }),
     ...ds.viewpoints.map((vp) => el('button', { className: 'chip', textContent: vp.name, onclick: () => flyTo(vp) }))) : null;
   const head = el('div', { className: 'info-head' },
@@ -393,7 +412,7 @@ function renderInfo() {
     !collapsed && ds.description ? el('p', { textContent: ds.description }) : null,
     !collapsed && ds.facts?.length ? el('div', { className: 'facts' }, ...ds.facts.map((f) => el('span', { textContent: f }))) : null,
     !collapsed ? vps : null,
-    cta].filter(Boolean)); // replaceChildren would stringify nulls
+    tourBtn ? el('div', { className: 'actions' }, tourBtn, cta) : cta].filter(Boolean)); // replaceChildren would stringify nulls
 }
 
 // ---------- reflectivity legend ----------
@@ -631,6 +650,7 @@ viewer.addEventListener('update', () => {
   const now = performance.now();
   resTick(now - lastT, now);
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  tour.tick(dt);
   if (state.autoOrbit) { // circle the camera around its pivot, ~100 s per revolution
     const v = viewer.scene.view, p = v.getPivot(), a = dt * 0.06;
     const dx = v.position.x - p.x, dy = v.position.y - p.y;
@@ -652,7 +672,8 @@ viewer.addEventListener('update', () => {
 // Share links pasted into an already-open viewer only change the hash (no reload): apply them.
 addEventListener('hashchange', async () => {
   const h = parseHash();
-  if (h.id && h.id !== state.activeId) { await switchTo(h.id, { cam: h.cam, color: h.color }); if (h.m) tools.decode(h.id, h.m); return; }
+  if (h.id && h.id !== state.activeId) { await switchTo(h.id, { cam: h.cam, color: h.color }); if (h.m) tools.decode(h.id, h.m); if (h.tour) startTour(); return; }
+  if (h.tour) { startTour(); return; }
   if (h.color && colorModesOf(activeDs())[h.color]) setColor(h.color);
   if (h.cam) { stopAutoOrbit(); viewer.scene.view.setView(h.cam.position, h.cam.target, 0); }
   if (h.m) tools.decode(state.activeId, h.m);
@@ -662,5 +683,6 @@ const fromHash = parseHash();
 const initial = datasets.find((d) => d.id === fromHash.id && d.url)?.id || cfg.default;
 await switchTo(initial, { cam: fromHash.cam, color: fromHash.color });
 if (fromHash.m && fromHash.id === initial) tools.decode(initial, fromHash.m);
+if (fromHash.tour && fromHash.id === initial) startTour();
 
 for (const ds of datasets) if (ds.url && ds.id !== initial) load(ds).then(applySettings).catch(console.warn);

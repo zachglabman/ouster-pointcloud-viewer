@@ -44,6 +44,14 @@
           ]
         }
       ],
+      "tour": [
+        {"name": "Golden Gate Park from above", "caption": "1.41 billion points from a single drone flight with an Ouster OS1 Max. Every dot is a measured lidar return, colored by the drone's camera.", "position": [702, -1099, 639], "target": [258, -300, -45], "hold": 6},
+        {"name": "Over the canopy", "caption": "The lidar sees the forest as true 3D: crowns, gaps between trees, and the ground underneath, not just a photo of the treetops.", "position": [-230, -520, 40], "target": [-50, -300, -52], "hold": 6},
+        {"name": "Trees, up close", "caption": "Closer in, single trees resolve into crowns, trunks and the shadows they cast. Try X-ray in Display to see through the canopy.", "position": [320, -250, 5], "target": [245, -150, -42], "hold": 7},
+        {"name": "Where the park meets the city", "caption": "Forest gives way to streets and rooftops. The same scan holds both, at the same accuracy.", "position": [240, -480, 30], "target": [430, -330, -44], "hold": 6},
+        {"name": "City blocks in plan", "caption": "From straight above, the point cloud is a measurable map. Use Measure to check a roofline or a street width.", "position": [600, -380, 210], "target": [600, -300, -42], "hold": 6},
+        {"name": "The whole capture", "caption": "That's the tour. Drag to explore on your own, or switch to Reflectivity to see the scene the way the sensor does.", "position": [-520, -1050, 520], "target": [260, -320, -45], "hold": 7}
+      ],
       "clean": {
         "zBand": [
           -90,
@@ -164,6 +172,14 @@
             0
           ]
         }
+      ],
+      "tour": [
+        {"name": "Viansa Winery", "caption": "7.6 million points captured on foot with an Ouster OS1 Max: the hilltop winery, its gardens and the vineyards around it.", "position": [170, -125, 105], "target": [35, 20, 0], "hold": 6},
+        {"name": "The winery buildings", "caption": "Tile roofs, walls and terraces, scanned at walking pace. Every surface the walk passed is in the cloud.", "position": [95, -55, 35], "target": [45, 0, 2], "hold": 6},
+        {"name": "The entry circle", "caption": "The planted circle at the entrance, a few meters across, captured as cleanly as the buildings around it.", "position": [55, 20, 12], "target": [30, 50, -2], "hold": 6},
+        {"name": "The terrace", "caption": "Umbrellas, rooftops and trees around the terrace, scanned from the ground in full color.", "position": [55, -45, 12], "target": [22, -12, 1], "hold": 6},
+        {"name": "The vineyard", "caption": "Vine rows run right up to the winery. Each row shows up as its own line of points.", "position": [-5, -38, 18], "target": [-50, 10, 0], "hold": 6},
+        {"name": "Back to the hilltop", "caption": "That's the tour. Drag to explore on your own, or try Measure to check a distance.", "position": [-80, -120, 70], "target": [40, 10, 0], "hold": 7}
       ],
       "clean": {
         "zBand": [
