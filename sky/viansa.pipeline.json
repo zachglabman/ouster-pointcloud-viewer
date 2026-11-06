@@ -1,0 +1,8 @@
+[
+  {"type":"readers.ply","filename":"/Users/zglabman/Desktop/ggp_pipeline/sky/viansa_sky.ply"},
+  {"type":"filters.assign","value":["Red = Red * 65535","Green = Green * 65535","Blue = Blue * 65535"]},
+  {"type":"filters.outlier","method":"statistical","mean_k":12,"multiplier":3.0},
+  {"type":"filters.elm","cell":10.0,"threshold":1.0},
+  {"type":"writers.copc","filename":"/Users/zglabman/Desktop/ggp_pipeline/out/viansa.copc.laz",
+   "scale_x":0.001,"scale_y":0.001,"scale_z":0.001,"offset_x":"auto","offset_y":"auto","offset_z":"auto"}
+]

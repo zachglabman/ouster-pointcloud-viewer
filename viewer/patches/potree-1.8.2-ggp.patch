@@ -1,0 +1,56 @@
+diff --git a/src/PotreeRenderer.js b/src/PotreeRenderer.js
+index 00d46da..99f2e42 100644
+--- a/src/PotreeRenderer.js
++++ b/src/PotreeRenderer.js
+@@ -1307,6 +1307,9 @@ export class Renderer {
+ 
+ 			shader.setUniform2f("elevationRange", material.elevationRange);
+ 			shader.setUniform2f("intensityRange", material.intensityRange);
++			// [ggp] cleaning filters
++			shader.setUniform2f("uFilterIntensityRange", material.uniforms.uFilterIntensityRange.value);
++			shader.setUniform2f("uFilterZRange", material.uniforms.uFilterZRange.value);
+ 
+ 
+ 			shader.setUniform3f("uIntensity_gbc", [
+diff --git a/src/materials/PointCloudMaterial.js b/src/materials/PointCloudMaterial.js
+index 031a17f..ae884c4 100644
+--- a/src/materials/PointCloudMaterial.js
++++ b/src/materials/PointCloudMaterial.js
+@@ -147,6 +147,8 @@ export class PointCloudMaterial extends THREE.RawShaderMaterial {
+ 			uFilterReturnNumberRange:		{ type: "fv", value: [0, 7]},
+ 			uFilterNumberOfReturnsRange:	{ type: "fv", value: [0, 7]},
+ 			uFilterGPSTimeClipRange:		{ type: "fv", value: [0, 7]},
++			uFilterIntensityRange:		{ type: "fv", value: [-1e30, 1e30]}, // [ggp]
++			uFilterZRange:				{ type: "fv", value: [-1e30, 1e30]}, // [ggp] world Z
+ 			uFilterPointSourceIDClipRange:		{ type: "fv", value: [0, 65535]},
+ 			matcapTextureUniform: 	{ type: "t", value: this.matcapTexture },
+ 			backfaceCulling: { type: "b", value: false },
+diff --git a/src/materials/shaders/pointcloud.vs b/src/materials/shaders/pointcloud.vs
+index 0219e3d..c5d5439 100644
+--- a/src/materials/shaders/pointcloud.vs
++++ b/src/materials/shaders/pointcloud.vs
+@@ -84,6 +84,8 @@ uniform vec2 uFilterReturnNumberRange;
+ uniform vec2 uFilterNumberOfReturnsRange;
+ uniform vec2 uFilterPointSourceIDClipRange;
+ uniform vec2 uFilterGPSTimeClipRange;
++uniform vec2 uFilterIntensityRange; // [ggp]
++uniform vec2 uFilterZRange;         // [ggp] world-space Z band
+ uniform float uGpsScale;
+ uniform float uGpsOffset;
+ 
+@@ -746,6 +748,15 @@ bool pointInClipPolygon(vec3 point, int polyIdx) {
+ 
+ void doClipping(){
+ 
++	{ // [ggp] reflectivity + height-band filters
++		float wz = (modelMatrix * vec4(position, 1.0)).z;
++		if(intensity < uFilterIntensityRange.x || intensity > uFilterIntensityRange.y
++			|| wz < uFilterZRange.x || wz > uFilterZRange.y){
++			gl_Position = vec4(100.0, 100.0, 100.0, 0.0);
++			return;
++		}
++	}
++
+ 	{
+ 		vec4 cl = getClassification(); 
+ 		if(cl.a == 0.0){

@@ -1,0 +1,18 @@
+# data (multi-GB; lives in gs://ouster-pointcloud-viewer/pointclouds/)
+in/
+out/
+tmp/
+inspect/
+*.las
+*.laz
+*.ply
+*.npy
+*.log
+
+# build / deps
+viewer/node_modules/
+viewer/dist/
+# Potree source clone (rebuild with viewer/patches, see README)
+viewer/vendor/
+
+.DS_Store

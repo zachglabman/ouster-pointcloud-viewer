@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Ouster Point Cloud Viewer</title>
+  <meta name="description" content="Explore Ouster OS1 Max point clouds in your browser: fly through, switch between true color and reflectivity, measure, and share a view.">
+  <!-- link previews (Slack, LinkedIn, iMessage, X). og:image must be an absolute URL. -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Ouster">
+  <meta property="og:title" content="Ouster OS1 Max point clouds">
+  <meta property="og:description" content="Fly through drone and walking lidar captures in your browser. Switch between true color and reflectivity, measure, and share a view.">
+  <meta property="og:url" content="https://storage.googleapis.com/ouster-pointcloud-viewer/viewer/index.html">
+  <meta property="og:image" content="https://storage.googleapis.com/ouster-pointcloud-viewer/viewer/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Colorized lidar point cloud of Golden Gate Park: trees, lawns, paths and a monument">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='4' cy='11' r='1.6' fill='%236aa9ff'/%3E%3Ccircle cx='8' cy='6' r='1.6' fill='%236aa9ff'/%3E%3Ccircle cx='12' cy='9' r='1.6' fill='%236aa9ff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="potree/build/potree/potree.css">
+  <link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+  <!-- Potree 1.8.2 is a global-script library. Only what the viewer uses (see scripts/sync-potree.sh);
+       the sidebar-GUI libs (jquery-ui, spectrum, jstree, d3, i18next, openlayers, plasio) are omitted. -->
+  <script src="potree/libs/jquery/jquery-3.1.1.min.js"></script>
+  <script src="potree/libs/other/BinaryHeap.js"></script>
+  <script src="potree/libs/tween/tween.min.js"></script>
+  <script src="potree/libs/proj4/proj4.js"></script>
+  <script src="potree/libs/copc/index.js"></script>
+  <script src="potree/build/potree/potree.js"></script>
+
+  <div class="potree_container">
+    <div id="potree_render_area"></div>
+    <div id="potree_sidebar_container"></div>
+  </div>
+
+  <section id="info" aria-label="Dataset"></section>
+  <aside id="panel" aria-label="Advanced controls"></aside>
+  <div id="legend"></div>
+  <div id="bottom">
+    <div id="hint"></div>
+    <nav id="toolbar" aria-label="View controls"></nav>
+  </div>
+  <nav id="switcher" aria-label="Datasets"></nav>
+  <div id="gizmo" aria-label="Axes: click to look along an axis"></div>
+  <section id="measures" aria-label="Measurements"></section>
+  <div id="pop"></div>
+  <div id="toast" role="status" hidden></div>
+  <div id="stats" hidden></div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
