@@ -84,12 +84,21 @@ canopy sky fringe is still caught. Viansa: 6.2% → 2.1% hidden. Drone captures 
 
 `clean/run_ggp.py` is the original Golden Gate Park run (same labels, PDAL outlier filter, fixed grid).
 
+## CDN (optional, faster loading)
+
+`hosting/cdn-setup.sh` puts Cloud CDN and a custom domain in front of the bucket (HTTPS load balancer +
+backend bucket, caching by the objects' own Cache-Control). Straight from the bucket each chunk waits
+~0.25-0.5 s; cached at an edge, ~20-50 ms. After it's live, point the dataset `url`s in datasets.json at
+the new domain (same paths) and redeploy.
+
 ## Guided tour
 
 `"tour"` in a dataset (datasets.json) lists stops `{ name, caption, position, target, hold }`. **▶ Take the
 tour** in the info card flies between them (eased, arcing over long legs, slow drift while a caption shows).
 ← / → step, Space pauses, any drag/scroll/other key hands control back where the camera is.
-`#d=<id>&tour` opens straight into it. Author stops in the dev viewer with **P** (copies camera JSON).
+`#d=<id>&tour` opens straight into it. Once a stop is sharp, the next stop's detail downloads in the
+background (a second-camera visibility pass after each frame). A "Refining detail…" pill shows while the
+current view is still loading. Author stops in the dev viewer with **P** (copies camera JSON).
 Events: `tour_start`, `tour_stop_reached`, `tour_stop` (`at`, `reason`), `tour_complete`. Code: `src/tour.js`.
 
 ## Potree

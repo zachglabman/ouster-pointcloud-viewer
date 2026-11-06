@@ -4,12 +4,13 @@
 // on long legs so the camera arcs over the scene instead of cutting through it. At each stop the camera
 // drifts in a slow orbit while the caption is up. Any pointer/wheel/key input on the scene ends the tour
 // and leaves the visitor where the camera is (the orbit pivot is the current stop's target).
+// Once a stop's detail has loaded, the next stop's nodes are requested in the background (onPrefetch).
 
 const ease = (t) => t * t * t * (t * (t * 6 - 15) + 10);
 const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
-export function createTour({ viewer, el, root, onEvent = () => {}, onEnd = () => {} }) {
+export function createTour({ viewer, el, root, onEvent = () => {}, onEnd = () => {}, onPrefetch = () => {} }) {
   let stops = null, i = 0, phase = 'idle', t = 0, legDur = 0, from = null, paused = false, dsId = null;
   let drift = 0, wait = 0, quiet = 0;
 
@@ -25,7 +26,7 @@ export function createTour({ viewer, el, root, onEvent = () => {}, onEnd = () =>
   }
 
   function legTo(k) {
-    i = k; from = cur(); t = 0; drift = 0;
+    i = k; from = cur(); t = 0; drift = 0; onPrefetch(null);
     const d = Math.max(dist(from.position, stops[k].position), dist(from.target, stops[k].target) * 0.7);
     legDur = Math.min(9, Math.max(3, 1.6 + d / 70));         // seconds: ~3 s nearby, up to 9 s across a site
     phase = 'fly';
@@ -42,7 +43,7 @@ export function createTour({ viewer, el, root, onEvent = () => {}, onEnd = () =>
   function stop(reason = 'user') {
     if (phase === 'idle') return;
     if (reason !== 'done') onEvent('tour_stop', { at: i + 1, of: stops.length, reason });
-    phase = 'idle'; stops = null;
+    phase = 'idle'; stops = null; onPrefetch(null);
     render(); onEnd();
   }
 
@@ -50,7 +51,7 @@ export function createTour({ viewer, el, root, onEvent = () => {}, onEnd = () =>
   function prev() { if (stops && i > 0) legTo(i - 1); }
   function finish() {
     onEvent('tour_complete', { stops: stops.length });
-    phase = 'idle'; stops = null; render(); onEnd();
+    phase = 'idle'; stops = null; onPrefetch(null); render(); onEnd();
   }
 
   // Called every frame with dt in seconds.
@@ -70,7 +71,11 @@ export function createTour({ viewer, el, root, onEvent = () => {}, onEnd = () =>
       // caption is read over a sharp view rather than coarse points.
       // Loading pauses briefly between batches, so "settled" = nothing loading for 1.5 s straight.
       wait += dt; quiet = Potree.numNodesLoading === 0 ? quiet + dt : 0;
-      if (quiet > 1.5 || wait > 10) t += dt;
+      if (quiet > 1.5 || wait > 10) {
+        t += dt;
+        // This stop is sharp: spend the rest of the hold downloading the next stop's detail.
+        if (i + 1 < stops.length) onPrefetch(stops[i + 1]);
+      }
       // Slow drift around the target: ~10 degrees over the hold, eased at the start.
       const hold = s.hold ?? 6;
       const a = (s.drift ?? 0.03) * Math.min(1, t / 1.5) * dt;

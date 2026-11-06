@@ -41,7 +41,28 @@ viewer.fpControls.keys.DOWN.push('Q'.charCodeAt(0));
 const tools = createTools({ viewer, el: (...a) => el(...a), toast: (m) => toast(m), activeId: () => state.activeId, onChange: () => renderToolbar(), onMeasure: (kind) => ev('measure', { kind }) });
 window.tools = tools; // console access, like window.viewer
 const gizmo = createGizmo($('#gizmo'), viewer, (dir) => snapView(dir));
-const tour = createTour({ viewer, el: (...a) => el(...a), root: $('#tour'), onEvent: (n, p) => ev(n, p), onEnd: () => renderInfo() });
+const tour = createTour({ viewer, el: (...a) => el(...a), root: $('#tour'), onEvent: (n, p) => ev(n, p), onEnd: () => renderInfo(), onPrefetch: (s) => prefetchView(s) });
+
+// ---------- prefetch: load another view's detail in the background ----------
+// After each rendered frame, run Potree's visibility pass for a second camera at the target view: that
+// queues its missing nodes for download. The next frame's update recomputes visibility for the real
+// camera before drawing, so the screen is unaffected. Throttled to 4x/s.
+let pfCam = null, pfStop = null, pfLast = 0;
+function prefetchView(stop) {
+  pfStop = stop;
+  if (!stop) return;
+  const cam = viewer.scene.getActiveCamera();
+  pfCam = pfCam || cam.clone();
+  pfCam.copy(cam);
+  pfCam.position.set(...stop.position);
+  pfCam.lookAt(...stop.target);
+  pfCam.updateMatrixWorld(true);
+}
+viewer.addEventListener('render.pass.end', () => {
+  if (!pfStop || performance.now() - pfLast < 250) return;
+  pfLast = performance.now();
+  Potree.updatePointClouds(viewer.scene.pointclouds.filter((p) => p.visible), pfCam, viewer.renderer);
+});
 window.tour = tour;
 function startTour(at = 0) {
   const ds = activeDs();
@@ -650,6 +671,18 @@ addEventListener('keyup', (e) => {
 });
 addEventListener('blur', endBoost);
 
+// ---------- "Refining detail…" ----------
+// Shown while detail for the current view streams in (after 300 ms of loading; hidden after 800 ms idle),
+// so a coarse view reads as in progress. Background prefetch for the tour doesn't count.
+const loadingEl = $('#loading');
+let ldBusySince = null, ldIdleSince = null;
+function loadingTick(now) {
+  const busy = Potree.numNodesLoading > 0 && !pfStop;
+  if (busy) { ldIdleSince = null; ldBusySince ??= now; } else { ldBusySince = null; ldIdleSince ??= now; }
+  if (busy && now - ldBusySince > 300) loadingEl.hidden = false;
+  else if (!busy && now - ldIdleSince > 800) loadingEl.hidden = true;
+}
+
 // ---------- per-frame ----------
 const statsEl = $('#stats');
 if (params.has('stats')) statsEl.hidden = false;
@@ -659,6 +692,7 @@ viewer.addEventListener('update', () => {
   resTick(now - lastT, now);
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
   tour.tick(dt);
+  loadingTick(now);
   if (state.autoOrbit) { // circle the camera around its pivot, ~100 s per revolution
     const v = viewer.scene.view, p = v.getPivot(), a = dt * 0.06;
     const dx = v.position.x - p.x, dy = v.position.y - p.y;
