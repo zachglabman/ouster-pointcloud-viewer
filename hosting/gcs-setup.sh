@@ -61,9 +61,11 @@ case "${1:-}" in
     GZ="--gzip-local=js,css,html,json,svg,wasm"
     gcloud storage cp -r "$DIST/potree" "gs://$BUCKET/$SITE/" $GZ --cache-control="public, max-age=86400"
     gcloud storage cp -r "$DIST/assets" "gs://$BUCKET/$SITE/" $GZ --cache-control="public, max-age=31536000, immutable"
-    for f in index.html datasets.json; do
-      gcloud storage cp "$DIST/$f" "gs://$BUCKET/$SITE/$f" $GZ --cache-control="no-cache"
+    for f in "$DIST"/index.html "$DIST"/datasets*.json; do     # every dataset list (datasets.json, datasets.sample.json, ...)
+      gcloud storage cp "$f" "gs://$BUCKET/$SITE/$(basename "$f")" $GZ --cache-control="no-cache"
     done
+    [ -d "$DIST/sample" ] && gcloud storage cp -r "$DIST/sample" "gs://$BUCKET/$SITE/" \
+      --content-type=application/vnd.laszip+copc --cache-control="public, max-age=86400"
     [ -f "$DIST/og.jpg" ] && gcloud storage cp "$DIST/og.jpg" "gs://$BUCKET/$SITE/og.jpg" --cache-control="public, max-age=86400"
     [ -d "$DIST/thumbs" ] && gcloud storage cp -r "$DIST/thumbs" "gs://$BUCKET/$SITE/" --cache-control="public, max-age=3600"
     echo "Live: https://storage.googleapis.com/$BUCKET/$SITE/index.html"
