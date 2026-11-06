@@ -33,6 +33,12 @@ case "${1:-}" in
   publish)
     F="${2:?usage: gcs-setup.sh publish path/to/name.copc.laz}"
     N="$(basename "$F")"
+    QA="${F%.copc.laz}.qa.json"      # written by clean/clean_cloud.py
+    if [ -f "$QA" ] && ! grep -q '"status": "ok"' "$QA" && [ "${FORCE:-0}" != 1 ]; then
+      echo "Review is on hold ($QA):"; grep -A5 '"reasons"' "$QA"
+      echo "Look at ${F%.copc.laz}.qa.png; publish anyway with FORCE=1."; exit 1
+    fi
+    [ -f "$QA" ] || echo "note: no review report ($QA); was this file cleaned with clean/clean_cloud.py?"
     if gcloud storage ls "gs://$BUCKET/$PREFIX/$N" >/dev/null 2>&1; then
       echo "gs://$BUCKET/$PREFIX/$N already exists. Data is cached for a year: publish a new version name (e.g. ${N%.copc.laz}-v2.copc.laz)."; exit 1
     fi

@@ -68,9 +68,17 @@ sh hosting/gcs-setup.sh site
 | 65–71 | color speckle, 8 strength bands (score // 32) | `clean/speckle.py`: brighter and differently colored than the ~1.5 m neighborhood |
 
 Inputs over 40 M points are processed in 100 m tiles with a 3 m overlap and merged with untwine; the
-tool checks the point count matches the source exactly. Budget ~10 min per 33 M-point tile per worker
-and ~7 GB RAM per worker (3 workers on a 24 GB Mac; Golden Gate Park took ~3 h).
-`clean/run_ggp.py` is the original Golden Gate Park run (same algorithm, fixed grid).
+tool checks the point count matches the source exactly. The outlier test runs multi-threaded (scipy),
+so a dense 33 M-point tile takes ~65 s (was ~10 min with PDAL's single-threaded filter; labels identical).
+Viansa: 20 s. Golden Gate Park would now take roughly 15–25 min (the original run: 1 h 32 min).
+
+Each run writes `out/<id>.qa.png` and `out/<id>.qa.json`: before / flagged (red) / cleaned renders of the
+densest, a typical, and the most-flagged area, plus class shares. Status `hold` (noise > 2%, speckle > 8%,
+or a sampled area > 25% flagged) makes `gcs-setup.sh publish` refuse until you've looked
+(`FORCE=1` to publish anyway). Known limit: on walking captures the speckle score also thins the edges of
+bright surfaces (sand paths next to plants); check the PNG.
+
+`clean/run_ggp.py` is the original Golden Gate Park run (same labels, PDAL outlier filter, fixed grid).
 
 ## Potree
 

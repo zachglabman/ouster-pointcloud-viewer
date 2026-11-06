@@ -1,7 +1,9 @@
 """Clean any colorized point cloud for the web viewer. Every point is KEPT; bad points are CLASSIFIED,
 and the viewer hides them (Clean button + Advanced sliders), so cleaning is reversible and tunable.
 
-  Classification 7      floating noise   filters.outlier (statistical, mean_k 12, x3) + filters.elm (10 m, 1)
+  Classification 7      floating noise   statistical outlier (mean dist to 12 NN > mean + 3 sd; same test as
+                                         PDAL filters.outlier, run multi-threaded with scipy: 11x faster,
+                                         identical labels) + filters.elm (10 m, 1)
   Classification 65..71 color speckle    speckle.py: brighter + differently colored than its ~1.5 m
                                          neighborhood (lidar/camera misregistration paints edges with
                                          sky/roof/road pixels). Band b = scores 32b..32b+31; the viewer's
@@ -18,9 +20,13 @@ Output: <out>.copc.laz (LAS 1.4 PDRF 7, 0.01 m) + <out>.dataset.json (a datasets
   python clean_cloud.py IN OUT_BASENAME [--id ID] [--tile 100] [--buffer 3] [--workers 3] [--whole 40e6]
   e.g. python clean_cloud.py ~/Desktop/site.ply out/site --id site
 
-Resumable: rerun the same command; finished tiles are skipped. Cost: the outlier filter dominates,
-~10 min per 33 M-point tile per worker on an M-series Mac (GGP: 1.41 B pts, 3 workers, ~3 h).
-Budget ~7 GB RAM per worker on dense 100 m tiles; 3 workers fit in 24 GB.
+Also writes <out>.qa.json + <out>.qa.png: before / flagged / after renders of sample tiles and the
+class shares; status "hold" if anything is out of the normal range (hosting/gcs-setup.sh publish
+refuses a held file unless FORCE=1). Look at the PNG before publishing a new kind of capture.
+
+Resumable: rerun the same command; finished tiles are skipped. Cost per dense 33 M-point 100 m tile:
+read 10 s, ELM 12 s, outlier 16 s (multi-threaded), speckle 6 s. The outlier step uses all cores,
+so use --workers 2 (default) on a 10-core Mac. Needs scipy in the env.
 """
 import argparse, glob, json, os, shutil, subprocess, sys, time, traceback
 from multiprocessing import Pool
@@ -31,8 +37,19 @@ sys.path.insert(0, HERE)
 from speckle import speckle_score
 
 BIN = os.path.dirname(sys.executable)          # conda env bin: pdal, untwine (call directly; `conda run` breaks dyld)
-NOISE = [{'type': 'filters.outlier', 'method': 'statistical', 'mean_k': 12, 'multiplier': 3.0},
-         {'type': 'filters.elm', 'cell': 10.0, 'threshold': 1.0}]
+NOISE = [{'type': 'filters.elm', 'cell': 10.0, 'threshold': 1.0}]      # the outlier test runs in numpy/scipy below
+
+def outlier_mask(xyz, k=12, mult=3.0, chunk=2_000_000):
+    """PDAL filters.outlier 'statistical' (mean_k=k, multiplier=mult), multi-threaded: mean distance to the
+    k nearest neighbors (self excluded) > mean + mult*sd over the set. Matches PDAL's labels exactly on GGP."""
+    from scipy.spatial import cKDTree
+    c = xyz - xyz.mean(0)
+    tree = cKDTree(c, leafsize=32, balanced_tree=False, compact_nodes=False)
+    md = np.empty(len(c))
+    for i in range(0, len(c), chunk):                      # chunked: k x n distance arrays get big
+        d, _ = tree.query(c[i:i + chunk], k=k + 1, workers=-1)
+        md[i:i + chunk] = d[:, 1:].mean(1)
+    return md > md.mean() + mult * md.std()
 
 def log(path, msg):
     line = time.strftime('%H:%M:%S ') + msg
@@ -51,6 +68,8 @@ def classify(a, scale):
     """Run speckle scoring on non-noise points and write classes 65..71 in place. Returns the array."""
     cls = a['Classification'].astype(np.uint8).copy()
     cls[(cls >= 65) & (cls <= 71)] = 0       # re-cleaning an already-cleaned file: rescore speckle from scratch
+    if len(a) > 13:
+        cls[outlier_mask(np.stack([a['X'], a['Y'], a['Z']], 1))] = 7
     ok = cls != 7
     if 'Red' in a.dtype.names and ok.any():
         xyz = np.stack([a['X'][ok], a['Y'][ok], a['Z'][ok]], 1)
@@ -72,11 +91,85 @@ def to_las16(a, scale):
     return a
 
 def write(a, path, copc=False):
+    # Fixed 0.01 m grid at offset 0: a 0.01 m source stays bit-exact (offset 'auto' re-snaps coordinates by
+    # up to 5 mm). Int32 at 0.01 m spans +-21,000 km, so UTM-size coordinates still fit.
     opts = dict(minor_version=4, dataformat_id=7, scale_x=0.01, scale_y=0.01, scale_z=0.01,
-                offset_x='auto', offset_y='auto', offset_z='auto')
-    w = (pdal.Writer.copc(filename=path, scale_x=0.01, scale_y=0.01, scale_z=0.01, offset_x='auto', offset_y='auto', offset_z='auto')
+                offset_x=0, offset_y=0, offset_z=0)
+    w = (pdal.Writer.copc(filename=path, scale_x=0.01, scale_y=0.01, scale_z=0.01, offset_x=0, offset_y=0, offset_z=0)
          if copc else pdal.Writer.las(filename=path, compression=True, **opts))
     w.pipeline(a).execute()
+
+# ---------- review report ----------
+HOLD = {'noise': 0.02, 'speckle': 0.08, 'window_flagged': 0.25}   # shares above these hold publishing
+
+def render_panels(a, size=(560, 360), win=40.0):
+    """Oblique view of one window: original | flagged (red) | cleaned. Returns an HxWx3 uint8 array."""
+    xyz = np.stack([a['X'], a['Y'], a['Z']], 1).astype(np.float64)
+    c = xyz - np.median(xyz, 0)
+    az, el = np.radians(35), np.radians(35)
+    x1 = c[:, 0] * np.cos(az) - c[:, 1] * np.sin(az); y1 = c[:, 0] * np.sin(az) + c[:, 1] * np.cos(az)
+    u = x1; v = c[:, 2] * np.cos(el) + y1 * np.sin(el); depth = y1 * np.cos(el) - c[:, 2] * np.sin(el)
+    W, H = size; res = win / W
+    m = (np.abs(u) < W * res / 2) & (np.abs(v) < H * res / 2)
+    rgb = np.stack([a['Red'], a['Green'], a['Blue']], 1) / 65535.0
+    cls = a['Classification']; bad = (cls == 7) | (cls >= 67)
+    out = []
+    for mode in ('orig', 'flag', 'clean'):
+        keep = m & (~bad if mode == 'clean' else True)
+        idx = np.flatnonzero(keep); idx = idx[np.argsort(-depth[idx])]          # far first
+        i = ((u[idx] + W * res / 2) / res).astype(int); j = (H - 1 - ((v[idx] + H * res / 2) / res)).astype(int)
+        col = np.clip(rgb[idx], 0, 1) ** 0.8
+        if mode == 'flag': col[bad[idx]] = [1, 0.1, 0.1]
+        im = np.zeros((H, W, 3))
+        for di in (0, 1):
+            for dj in (0, 1):
+                im[np.clip(j + dj, 0, H - 1), np.clip(i + di, 0, W - 1)] = col
+        im[:, -2:] = 0.25                                                     # panel divider
+        out.append((im * 255).astype(np.uint8))
+    return np.concatenate(out, 1)
+
+def qa_report(copc, base, n, noise, speck, logf):
+    """Sample 3 windows (densest, typical, most-flagged) from the output and render before/flagged/after."""
+    p = pdal.Pipeline(json.dumps([{'type': 'readers.copc', 'filename': copc, 'resolution': 2.0}])); p.execute()
+    a = p.arrays[0]
+    if 'Red' not in a.dtype.names or a['Red'].max() == 0:
+        status, reasons = 'hold', ['no RGB: the speckle classes are meaningless without color']
+        json.dump({'status': status, 'reasons': reasons}, open(base + '.qa.json', 'w'), indent=2); return status
+    C = 40.0
+    gx = np.floor(a['X'] / C).astype(np.int64); gy = np.floor(a['Y'] / C).astype(np.int64)
+    gx0, gy0 = gx.min(), gy.min(); K = int(gy.max() - gy0) + 1
+    key = (gx - gx0) * K + (gy - gy0)                       # non-negative cell index
+    uk, inv = np.unique(key, return_inverse=True)
+    cnt = np.bincount(inv); bad = np.bincount(inv, ((a['Classification'] == 7) | (a['Classification'] >= 67)).astype(float)) / cnt
+    # Sample only the populated scene: the densest cells that together hold 80% of the points
+    # (sparse outskirts and stray clusters would otherwise win "most flagged" with a handful of points).
+    order = np.argsort(-cnt); keep = order[: max(1, int(np.searchsorted(np.cumsum(cnt[order]) / cnt.sum(), 0.8)) + 1)]
+    picks = {'densest': int(keep[0]), 'typical': int(keep[len(keep) // 2]),
+             'most flagged': int(keep[np.argmax(bad[keep])])}
+    rows, wins, reasons = [], [], []
+    for name, k in picks.items():
+        kx, ky = divmod(int(uk[k]), K)
+        x0, y0 = (kx + gx0) * C, (ky + gy0) * C
+        q = pdal.Pipeline(json.dumps([{'type': 'readers.copc', 'filename': copc, 'bounds': f'([{x0},{x0 + C}],[{y0},{y0 + C}])'}])); q.execute()
+        w = q.arrays[0]; c = w['Classification']
+        share = float(np.mean((c == 7) | (c >= 67))) if len(w) else 0.0
+        wins.append({'window': name, 'x0': x0, 'y0': y0, 'points': int(len(w)), 'flagged': round(share, 4)})
+        if share > HOLD['window_flagged']: reasons.append(f'{name} window ({x0:.0f},{y0:.0f}) has {share:.0%} flagged')
+        if len(w): rows.append(render_panels(w))
+    if noise > HOLD['noise']: reasons.append(f'noise {noise:.2%} > {HOLD["noise"]:.0%}')
+    if speck > HOLD['speckle']: reasons.append(f'speckle hidden by default {speck:.2%} > {HOLD["speckle"]:.0%}')
+    status = 'hold' if reasons else 'ok'
+    if rows:
+        img = np.concatenate(rows, 0)
+        ppm = base + '.qa.ppm'
+        open(ppm, 'wb').write(b'P6 %d %d 255\n' % (img.shape[1], img.shape[0]) + img.tobytes())
+        subprocess.run(['sips', '-s', 'format', 'png', ppm, '--out', base + '.qa.png'], capture_output=True); os.remove(ppm)
+    json.dump({'status': status, 'reasons': reasons, 'points': n, 'noise': round(noise, 5), 'speckle_hidden': round(speck, 5),
+               'thresholds': HOLD, 'windows': wins, 'png': os.path.basename(base + '.qa.png'),
+               'panels': 'rows = windows (densest, typical, most flagged); columns = original | flagged (red) | cleaned'},
+              open(base + '.qa.json', 'w'), indent=2)
+    log(logf, f'review: {status.upper()}' + (': ' + '; '.join(reasons) if reasons else '') + f'  -> {base}.qa.png')
+    return status
 
 # ---------- tiled path ----------
 G = {}
@@ -110,7 +203,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('src'); ap.add_argument('out', help='output basename, e.g. out/site')
     ap.add_argument('--id'); ap.add_argument('--tile', type=float, default=100); ap.add_argument('--buffer', type=float, default=3)
-    ap.add_argument('--workers', type=int, default=3); ap.add_argument('--whole', type=float, default=40e6)
+    ap.add_argument('--workers', type=int, default=2); ap.add_argument('--whole', type=float, default=40e6)
     a = ap.parse_args()
     out_copc = a.out + '.copc.laz'; logf = a.out + '.clean.log'
     os.makedirs(os.path.dirname(os.path.abspath(out_copc)), exist_ok=True)
@@ -170,6 +263,7 @@ def main():
     has_int = byname['Intensity']['maximum'] > 0
     b = s['bounds']; ext = (b['maxx'] - b['minx'], b['maxy'] - b['miny'])
     log(logf, f'OK {out_copc}: {n_copc:,} pts (matches source), noise {noise:.2%}, speckle hidden by default {speck:.2%}')
+    qa_report(out_copc, a.out, n_copc, noise, speck, logf)
 
     did = a.id or os.path.basename(a.out)
     pts = f'{n_copc / 1e9:.2f} B points' if n_copc >= 1e9 else f'{n_copc / 1e6:.2f} M points'
