@@ -10,7 +10,6 @@ measure, and share a link to an exact view.
 | Dataset | Capture | Points | Streams |
 |---|---|---|---|
 | Golden Gate Park, San Francisco | Drone, OS1 Max | 1.41 B | 13.8 GB COPC |
-| Viansa Winery, Sonoma | Walking, OS1 Max | 7.59 M | 79 MB COPC |
 
 **What it does**
 
