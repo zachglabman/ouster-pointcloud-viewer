@@ -39,7 +39,7 @@ npm run dev
 Open the address it prints (e.g. http://localhost:5173):
 
 - `/` shows the live datasets, streamed from the public bucket.
-- `/?config=datasets.sample.json` shows a 4.6 MB sample bundled with the repo (works offline).
+- `/?config=datasets.sample.json` shows a 5.6 MB sample bundled with the repo (works offline).
 
 ## 2. View your own point cloud
 
@@ -228,7 +228,6 @@ Set `VITE_GA4_ID` (and/or `VITE_GTM_ID`) in `viewer/.env` and redeploy. Every ev
 clean/clean_cloud.py      clean + convert any LAS/LAZ/COPC/PLY to COPC (+ dataset.json, review report)
 clean/speckle.py          the color-speckle score
 clean/run_ggp.py          the original Golden Gate Park run (kept for reference)
-sky/                      Viansa's one-off sky-fringe score (stored in Intensity)
 hosting/gcs-setup.sh      bucket, publish data, deploy site, range-request check   (settings: hosting/.env)
 hosting/cdn-setup.sh      optional Cloud CDN + custom domain
 viewer/index.html         page shell, link-preview tags
