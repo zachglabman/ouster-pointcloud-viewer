@@ -57,7 +57,9 @@ const tour = createTour({ viewer, el: (...a) => el(...a), root: $('#tour'), onEv
 // frame, so it claims free download slots before the next frame's pass for the real camera does.
 let pfCam = null, pfStop = null;
 function prefetchView(stop) {
-  pfStop = stop;
+  // Phones skip it: their cache only fits the current view, so the next stop's nodes would evict the one on
+  // screen (it flickered as nodes were evicted and reloaded). The flight to a stop loads it instead.
+  pfStop = isTouch ? null : stop;
   if (!stop) return;
   const cam = viewer.scene.getActiveCamera();
   pfCam = pfCam || cam.clone();
@@ -68,7 +70,12 @@ function prefetchView(stop) {
 }
 viewer.addEventListener('render.pass.end', () => {
   if (!pfStop) return;
+  // Half the budget: enough to get the next stop's coarse-to-mid detail down, without pushing the finest
+  // nodes of the view on screen out of the cache (the wires stop lost two levels of detail to it).
+  const b = Potree.pointBudget;
+  Potree.pointBudget = b / 2;
   Potree.updatePointClouds(viewer.scene.pointclouds.filter((p) => p.visible), pfCam, viewer.renderer);
+  Potree.pointBudget = b;
 });
 window.tour = tour;
 function startTour(at = 0) {
@@ -95,7 +102,7 @@ const DEFAULTS = {
   refl: { range: [0, 40], gamma: 1 },
   rgb: { gamma: 1, brightness: 0, contrast: 0 },
   pointSize: 0.5, sizeType: 'ADAPTIVE', shape: 'CIRCLE',
-  budgetM: isTouch ? 2 : 8, voxelLevel: Infinity,
+  budgetM: 8, voxelLevel: Infinity,
   lodPx: isTouch ? 10 : 6,       // refine a node once it covers this many CSS px (lower = sooner)
   res: 'auto',                   // render resolution: 'auto' (adaptive) | 1 | 1.5 | 2  (x CSS pixels)
   clean: true,                   // simple toggle: applies the dataset's clean preset
@@ -128,7 +135,7 @@ function patchPick(pc) {
 const SPECKLE_CLASSES = [65, 66, 67, 68, 69, 70, 71];
 // Register them with a color: Potree's classification LUT crashes on entries without one.
 for (const c of SPECKLE_CLASSES) viewer.classifications[c] ??= { visible: true, name: `speckle ${c - 64}`, color: [0.9, 0.3, 0.9, 1] };
-const budgetFor = (ds) => Math.min((ds?.pointBudget || 8e6) / 1e6, isTouch ? 2 : 99);
+const budgetFor = (ds) => Math.min((ds?.pointBudget || 8e6) / 1e6, isTouch ? 8 : 99);
 
 // ---------- render resolution ----------
 // Potree draws at CSS-pixel size by default (half resolution on Retina). viewer.scaleFactor sizes the
@@ -159,7 +166,8 @@ function resTick(dtMs, now) {
   if (S.res !== 'auto') return setScale(Number(S.res));
   if (now - res.lastChange < 1500) return;
   if (now > res.ceilingUntil) res.ceiling = RES_MAX;
-  if (res.frameMs > 24 && viewer.scaleFactor > 1) {            // below ~42 fps: step down, and stay below
+  // below ~42 fps: step down, and stay below (not while a raised still-view budget is slowing it: that backs itself off)
+  if (res.frameMs > 24 && viewer.scaleFactor > 1 && !budgetRaised()) {
     res.ceiling = viewer.scaleFactor - 0.25; res.ceilingUntil = now + 20000;   // this scale for 20 s
     setScale(res.ceiling); res.lastChange = now;
   } else if (res.frameMs < 18 && viewer.scaleFactor < res.ceiling) {          // holding ~60 fps (vsync): step up
@@ -167,6 +175,55 @@ function resTick(dtMs, now) {
   }
 }
 viewer.scaleFactor = RES_MAX;
+
+// ---------- auto point budget ----------
+// Progressive refinement: while the camera moves, draw the dataset budget (phones 8 M). Once the view is
+// still for a second (slow drift like the intro orbit or a tour hold counts as still) and the view has
+// filled its budget, add BUDGET_STEP at a time while frames stay above ~25 fps; frame rate matters less
+// on a still view. Moving again drops straight back to the base budget, so dragging stays responsive.
+// Slow frames on a still view step back down and cap it there for a minute. The Advanced slider turns
+// this off (the visitor picked a budget).
+const BUDGET_STEP = 4, BUDGET_CAP = isTouch ? 12 : 30;
+// Loaded-node cache. Potree keeps up to 2x the point budget in memory (it resets pointLoadLimit every
+// frame). Loaded points cost ~35 B each in JS (position 12, rgba 6, intensity 4, gps-time 4, indices 4,
+// class/returns/source 5) plus their GPU copy, so at a 16 M phone budget the tour's cache reached ~30 M
+// points (~1 GB JS) and iOS Safari killed the tab around stop 4. Phones: 1.25x the budget (and no tour
+// prefetch, see prefetchView). Desktop: 2x (room for the view on screen plus the tour's next stop), at
+// most 48 M points (~1.7 GB).
+Object.defineProperty(Potree, 'pointLoadLimit', {
+  configurable: true,
+  get: () => (isTouch ? S.budgetM * 1.25e6 : Math.min(S.budgetM * 2e6, 48e6)),   // S, not Potree.pointBudget: the prefetch pass lowers that briefly
+  set: () => {},
+});
+const ab = { on: true, still: 0, slow: 0, sinceStep: 0, ceiling: BUDGET_CAP, ceilingUntil: 0, last: null };
+window.autoBudget = { state: ab, res };   // console access
+const budgetRaised = () => ab.on && S.budgetM > budgetFor(activeDs());
+function setBudget(m) { S.budgetM = m; ab.sinceStep = 0; viewer.setPointBudget(m * 1e6); }
+function autoBudgetTick(dt, now) {
+  if (!ab.on || document.hidden || !activeDs()) return;
+  const v = viewer.scene.view, pos = v.position;
+  // Camera speed relative to its distance from the pivot, per second: drags, zooms and tour flights are
+  // well above 0.1; the intro auto-orbit (0.06) and tour-hold drift (0.03) are below.
+  const moved = ab.last ? pos.distanceTo(ab.last) / Math.max(1, pos.distanceTo(v.getPivot())) / Math.max(dt, 1e-3) : 1;
+  ab.last = (ab.last || pos.clone()).copy(pos);
+  ab.still = moved < 0.1 ? ab.still + dt : 0;
+  ab.sinceStep += dt;
+  const base = budgetFor(activeDs());
+  if (ab.still === 0) { if (S.budgetM > base) setBudget(base); return; }   // moving: back to base at once
+  if (now > ab.ceilingUntil) ab.ceiling = BUDGET_CAP;
+  ab.slow = res.frameMs > 45 ? ab.slow + dt : 0;
+  if (ab.slow > 1.5 && S.budgetM > base && ab.sinceStep > 2) {        // still view struggling: back off
+    setBudget(Math.max(base, S.budgetM - BUDGET_STEP));
+    ab.ceiling = S.budgetM; ab.ceilingUntil = now + 60000;
+    return;
+  }
+  // "Full" = the view uses its whole budget, so more points would add detail. (Potree keeps a few
+  // downloads going once the budget is full, so "nothing loading" is not required.)
+  const pc = viewer.scene.pointclouds.find((p) => p.visible);
+  const full = !!pc && pc.numVisiblePoints >= 0.97 * viewer.getPointBudget();
+  if (ab.still > 1 && ab.sinceStep > 1.5 && full && res.frameMs < 40 && S.budgetM + BUDGET_STEP <= ab.ceiling)
+    setBudget(S.budgetM + BUDGET_STEP);
+}
 const info = new Map();
 
 const activeDs = () => datasets.find((d) => d.id === state.activeId);
@@ -335,7 +392,7 @@ async function switchTo(id, { cam = null, color = null } = {}) {
   if (tour.active) tour.stop('switch');
   state.activeId = id;
   history.replaceState(null, '', `${location.search}#d=${id}`); // replaceState fires no hashchange
-  S.budgetM = budgetFor(ds);
+  S.budgetM = budgetFor(ds); ab.ceiling = BUDGET_CAP; ab.ceilingUntil = 0;
   renderAll();
 
   const pc = await load(ds);
@@ -650,7 +707,7 @@ function renderPanel() {
         onInput: (n) => { S.voxelLevel = n >= vox.length ? Infinity : vox[n].level; applySettings(); },
         title: 'Coarsest spacing drawn: caps the octree depth (a runtime voxel grid)',
       }),
-      slider('Point budget', { min: 1, max: 30, step: 1, value: S.budgetM, fmt: (v) => v + 'M', onInput: (v) => { S.budgetM = v; applySettings(); } }),
+      slider('Point budget', { min: 1, max: 30, step: 1, value: S.budgetM, fmt: (v) => v + 'M', onInput: (v) => { ab.on = false; S.budgetM = v; applySettings(); }, title: 'Auto by default: detail is added while the view is still. Moving this sets it by hand.' }),
       slider('LOD threshold', { min: 4, max: 80, step: 1, value: S.lodPx, fmt: (v) => v + ' px', onInput: (v) => { S.lodPx = v; applySettings(); }, title: 'Lower = refine sooner (more detail, more load)' }),
     ),
     section('cleaning', 'Cleaning',
@@ -678,7 +735,7 @@ function renderPanel() {
       el('button', { className: 'link', textContent: 'Reset all', onclick: () => {
         const keep = { nav: S.nav, colorKey: S.colorKey };
         Object.assign(S, structuredClone(DEFAULTS), keep);
-        S.budgetM = budgetFor(activeDs());
+        S.budgetM = budgetFor(activeDs()); ab.on = true; ab.ceiling = BUDGET_CAP; ab.ceilingUntil = 0;
         setClean(true);
       } }),
     ),
@@ -799,6 +856,7 @@ viewer.addEventListener('update', () => {
   resTick(now - lastT, now);
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
   tour.tick(dt);
+  autoBudgetTick(dt, now);
   loadingTick(now);
   if (state.autoOrbit) { // circle the camera around its pivot, ~100 s per revolution
     const v = viewer.scene.view, p = v.getPivot(), a = dt * 0.06;

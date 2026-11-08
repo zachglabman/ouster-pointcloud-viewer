@@ -145,7 +145,7 @@ sh hosting/gcs-setup.sh site              # builds the viewer and uploads it
 | `tour` | guided tour stops: `[{ "name", "chip", "caption", "position", "target", "hold" }]` |
 | `colorMode`, `colorModes` | default and available looks (`rgb`, `reflectivity`); Height is always added |
 | `noiseClassified`, `speckle`, `skyFilter`, `clean` | cleaning presets (written by `clean_cloud.py`) |
-| `pointBudget`, `maxFlySpeed` | points on screen (desktop; phones cap at 2 M) and fly-mode speed cap |
+| `pointBudget`, `maxFlySpeed` | starting points on screen while moving (phones cap at 8 M; a still view adds detail up to 30 M desktop, 12 M phones) and fly-mode speed cap |
 | `autoOrbit` | slowly circle the opening view until the visitor moves |
 | `dev` | only listed with `?dev=1` |
 

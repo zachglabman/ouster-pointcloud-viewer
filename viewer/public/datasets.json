@@ -5,7 +5,7 @@
       "id": "ggp",
       "name": "Golden Gate Park",
       "url": "https://storage.googleapis.com/ouster-pointcloud-viewer/pointclouds/ggp-v2.copc.laz",
-      "studioUrl": "https://studio.ouster.com/share/OQ20P447YJLEJV5W?utm_source=ouster-viz",
+      "studioUrl": "https://studio.ouster.com/share/WSRA82WX8Q72X8LA?utm_source=ouster-viz",
       "thumbnail": "thumbs/ggp.jpg",
       "title": "Golden Gate Park",
       "description": "Point cloud of Golden Gate Park in San Francisco, captured by drone with an Ouster OS1 Max. Fly through it, switch between true color and reflectivity, and zoom down to individual points.",
@@ -45,12 +45,12 @@
         }
       ],
       "tour": [
-        {"name": "Golden Gate Park from above", "chip": "1.41B points · one flight", "caption": "One drone flight, 1.41 billion points. OS1 Max captures up to 10.4 million points per second across 256 channels, with color from the sensor itself.", "position": [702, -1099, 639], "target": [258, -300, -45], "hold": 6},
+        {"name": "Golden Gate Park from above", "chip": "1.41B points · one flight", "caption": "One drone flight, 1.41 billion points. OS1 Max captures up to 10.4 million points per second across 256 channels, with color from the sensor itself.", "position": [702, -1099, 639], "target": [258, -300, -45], "hold": 3},
         {"name": "Through the canopy", "chip": "256 channels", "caption": "256 channels sweep the canopy from many angles in a single pass, so the cloud holds crowns, the gaps between them, and the ground underneath.", "position": [-230, -520, 40], "target": [-50, -300, -52], "hold": 6},
-        {"name": "Wires, up close", "chip": "0.09° beam", "caption": "A narrow beam keeps the laser spot small enough to trace a utility pole and the thin wires strung from it, against the building behind.", "position": [326.15, -233.54, -37.8], "target": [348.41, -243.4, -44.87], "hold": 7},
+        {"name": "Wires, up close", "chip": "0.09° beam", "caption": "A narrow beam keeps the laser spot small enough to trace a utility pole and the thin wires strung from it, against the building behind.", "position": [326.15, -233.54, -37.8], "target": [348.41, -243.4, -44.87], "hold": 8, "drift": 0.01},
         {"name": "Where the park meets the city", "chip": "200 m @ 10% reflectivity", "caption": "200 m of range at 10% reflectivity puts forest, streets, and rooftops in the same flight from the same altitude.", "position": [240, -480, 30], "target": [430, -330, -44], "hold": 6},
         {"name": "City blocks in plan", "chip": "±0.25 cm precision", "caption": "Precision down to ±0.25 cm keeps rooflines and curbs crisp enough to measure. Use Measure to check a roof edge or a street width.", "position": [600, -380, 210], "target": [600, -300, -42], "hold": 6},
-        {"name": "The whole capture", "chip": "10.4M pts/s", "caption": "End of the tour. Drag to explore, or switch to Reflectivity to see the scene the way the sensor does.", "position": [-520, -1050, 520], "target": [260, -320, -45], "hold": 7}
+        {"name": "The whole capture", "chip": "10.4M pts/s", "caption": "End of the tour. Drag to explore, or switch to Reflectivity: signal strength corrected for range, so each surface shows how strongly it returns the laser.", "position": [-520, -1050, 520], "target": [260, -320, -45], "hold": 7}
       ],
       "clean": {
         "zBand": [
