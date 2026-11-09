@@ -797,6 +797,72 @@ new ResizeObserver(setBottomH).observe($('#bottom'));
   });
 }
 
+// ---------- orbit and zoom around the point under the cursor ----------
+// Potree's orbit controls always turn and zoom about the screen centre. Pick the cloud point under the
+// cursor when a left-drag starts or the wheel turns, then apply the same yaw/pitch/zoom as a rigid motion
+// about that point, so it stays under the cursor. No hit: zoom along the cursor ray, orbit as before.
+{
+  const oc = viewer.orbitControls, el = viewer.renderer.domElement;
+  const V3 = viewer.scene.view.position.constructor, Z = new V3(0, 0, 1);
+  let orbitAt = null, zoomAt = null, lastPick = { x: -1e9, y: 0, t: 0 };
+  const pick = (x, y) => {
+    try {
+      const I = Potree.Utils.getMousePointCloudIntersection({ x, y }, viewer.scene.getActiveCamera(), viewer, viewer.scene.pointclouds, { pickClipped: false });
+      return I ? I.location.clone() : null;
+    } catch { return null; }
+  };
+  const xy = (e) => { const r = el.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  el.addEventListener('pointerdown', (e) => {
+    orbitAt = null;
+    if (viewer.getControls() !== oc || e.button !== 0 || !e.isPrimary) return;
+    orbitAt = pick(...xy(e));
+  });
+  el.addEventListener('wheel', (e) => {
+    if (viewer.getControls() !== oc) return;
+    const [x, y] = xy(e), now = performance.now();
+    // one pick per gesture: re-pick only if the cursor moved or the wheel paused
+    if (Math.hypot(x - lastPick.x, y - lastPick.y) < 4 && now - lastPick.t < 250) { lastPick.t = now; return; }
+    lastPick = { x, y, t: now };
+    let p = pick(x, y);
+    if (!p) { // empty sky: a point on the cursor ray at the pivot's depth
+      const cam = viewer.scene.getActiveCamera(), v = viewer.scene.view;
+      const ray = Potree.Utils.mouseToRay({ x, y }, cam, el.clientWidth, el.clientHeight);
+      const depth = v.radius / Math.max(0.2, ray.direction.dot(v.direction));
+      p = ray.origin.clone().add(ray.direction.clone().multiplyScalar(depth));
+    }
+    zoomAt = p;
+  }, { capture: true, passive: true });
+
+  const update = oc.update.bind(oc);
+  oc.update = function (delta) {
+    const view = this.scene.view;
+    if (!view || S.ortho) { orbitAt = zoomAt = null; return update(delta); }
+    const prog = Math.min(1, this.fadeFactor * delta), atten = Math.max(0, 1 - this.fadeFactor * delta);
+    let { yawDelta: yd, pitchDelta: pd, radiusDelta: rd } = this;
+    if (orbitAt && (yd || pd)) {
+      const p0 = view.pitch;
+      view.pitch = p0 - prog * pd;               // the setter clamps; use what it actually applied
+      const dPitch = view.pitch - p0, dYaw = -prog * yd;
+      const right = new V3(Math.cos(view.yaw), Math.sin(view.yaw), 0);
+      const off = view.position.clone().sub(orbitAt).applyAxisAngle(right, dPitch).applyAxisAngle(Z, dYaw);
+      view.yaw += dYaw;
+      view.position.copy(orbitAt).add(off);
+      view.radius = Math.max(0.1, -off.dot(view.direction)); // keep the pivot at the picked point's depth
+      this.yawDelta = this.pitchDelta = 0; yd *= atten; pd *= atten;
+    } else yd = pd = null;
+    if (zoomAt && rd) {
+      const r = Math.max(0.05, view.radius + prog * rd), k = r / view.radius;
+      const off = view.position.clone().sub(zoomAt).multiplyScalar(k);
+      view.position.copy(zoomAt).add(off);
+      view.radius = r;
+      this.radiusDelta = 0; rd -= prog * rd;
+    } else rd = null;
+    update(delta);                                  // pan, move speed, and fading of the other deltas
+    if (yd !== null) { this.yawDelta = yd; this.pitchDelta = pd; }
+    if (rd !== null) this.radiusDelta = rd;
+  };
+}
+
 function renderAll() { renderInfo(); renderToolbar(); renderPanel(); renderSwitcher(); renderLegend(); document.body.classList.toggle('adv', state.advanced); setBottomH(); }
 
 // ---------- keys ----------
