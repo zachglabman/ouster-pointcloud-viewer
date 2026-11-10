@@ -105,7 +105,6 @@ const DEFAULTS = {
   budgetM: 8, voxelLevel: Infinity,
   lodPx: isTouch ? 10 : 6,       // refine a node once it covers this many CSS px (lower = sooner)
   res: 'auto',                   // render resolution: 'auto' (adaptive) | 1 | 1.5 | 2  (x CSS pixels)
-  clean: true,                   // simple toggle: applies the dataset's clean preset
   noise: 'show',                 // show | hide | only   (Classification 7)
   zBand: null,                   // [zmin, zmax] world Z; null = full extent
   reflFilter: [0, 255],
@@ -318,14 +317,12 @@ function applySettings() {
   renderLegend();
 }
 
-// "Clean" = the dataset's preset height band + hide classified noise.
-function setClean(on) {
-  const ds = activeDs();
-  S.clean = on;
-  S.zBand = on && ds?.clean?.zBand ? [...ds.clean.zBand] : null;
-  S.noise = on && ds?.noiseClassified ? 'hide' : 'show';
-  S.skyCut = on && ds?.skyFilter ? ds.skyFilter.default : 0;
-  S.speckle = on && ds?.speckle ? ds.speckle.default : 0;
+// Always clean: the dataset's preset height band + hide classified noise (+ speckle / sky-fringe defaults).
+// No on/off switch; the Advanced > Cleaning sliders can still fine-tune, and "Reset cleaning" returns here.
+const CLEAN_KEYS = ['zBand', 'noise', 'skyCut', 'speckle'];
+function applyClean() {
+  const b = baselineFor(activeDs());
+  for (const k of CLEAN_KEYS) S[k] = structuredClone(b[k]);
   applySettings(); renderAll();
 }
 
@@ -404,7 +401,7 @@ async function switchTo(id, { cam = null, color = null } = {}) {
   const refl = (ds.colorModes || DEFAULT_COLOR_MODES).reflectivity;
   if (refl?.range) S.refl.range = [...refl.range];
   if (!refl) S.reflFilter = [0, 255]; // no intensity in this dataset: a refl filter would hide everything
-  setClean(S.clean);
+  applyClean();
   setCamera(ds, pc, cam);
   state.autoOrbit = !cam && !!ds.autoOrbit;
   renderAll();
@@ -416,7 +413,7 @@ async function switchTo(id, { cam = null, color = null } = {}) {
 // A share link carries every display setting that differs from what a first-time visitor would see for
 // that dataset (defaults + the dataset's clean preset), so links stay short and open the exact view.
 // Device-specific settings (point budget, LOD threshold, render resolution) stay with the viewer.
-const SHARE_KEYS = ['fov', 'background', 'refl', 'rgb', 'pointSize', 'sizeType', 'shape', 'voxelLevel', 'clean',
+const SHARE_KEYS = ['fov', 'background', 'refl', 'rgb', 'pointSize', 'sizeType', 'shape', 'voxelLevel',
   'noise', 'zBand', 'reflFilter', 'skyCut', 'speckle', 'edl', 'edlStrength', 'edlRadius', 'ortho', 'xray', 'xrayOpacity'];
 const SHARE_ENUMS = { background: ['black', 'gradient', 'white'], sizeType: ['ADAPTIVE', 'FIXED', 'ATTENUATED'],
   shape: ['SQUARE', 'CIRCLE', 'PARABOLOID'], noise: ['show', 'hide', 'only'] };
@@ -424,7 +421,7 @@ function baselineFor(ds) {
   const b = structuredClone(DEFAULTS);
   const refl = (ds.colorModes || DEFAULT_COLOR_MODES).reflectivity;
   if (refl?.range) b.refl.range = [...refl.range];
-  b.zBand = ds.clean?.zBand ? [...ds.clean.zBand] : null;      // same as setClean(true)
+  b.zBand = ds.clean?.zBand ? [...ds.clean.zBand] : null;      // the always-on clean preset
   b.noise = ds.noiseClassified ? 'hide' : 'show';
   b.skyCut = ds.skyFilter ? ds.skyFilter.default : 0;
   b.speckle = ds.speckle ? ds.speckle.default : 0;
@@ -454,6 +451,7 @@ function applySharedSettings(code) {
   let d = {};
   try { d = code ? JSON.parse(b64u.dec(code)) : {}; } catch { d = {}; }
   const b = baselineFor(ds);
+  if (d.clean === false) for (const k of CLEAN_KEYS) delete d[k]; // older links made with Clean off: show it clean
   for (const k of SHARE_KEYS) {
     const v = k in d && validShared(d[k], b[k], k) ? d[k] : b[k];
     S[k] = k === 'voxelLevel' && v === null ? Infinity : structuredClone(v);
@@ -587,7 +585,6 @@ function renderToolbar() {
     popBtn('nav', NAV_LABEL[S.nav] + (S.ortho ? ' · Ortho' : ''), 'Navigation, projection and views'),
     popBtn('display', '◐ Display', 'X-ray, eye-dome lighting, point size'),
     isTouch || !UI.measure ? null : popBtn('measure', '⟷ Measure', 'Distance, height, area, point (M)', tools.inserting != null || tools.count(state.activeId) > 0),
-    toggle('✦ Clean', S.clean, () => { ev('clean', { on: !S.clean }); setClean(!S.clean); }, ds.skyFilter ? 'Hide stray points and sky-colored fringe on edges' : ds.speckle ? 'Hide stray points and mis-colored speckle' : 'Hide stray points (noise below ground and in the air)'),
     !UI.image ? null : el('button', { className: 'tb', title: 'Save a screenshot (PNG)', ariaLabel: 'Save a screenshot', onclick: () => { ev('screenshot'); screenshot(viewer, `${ds.id}-view`).then(() => toast('Screenshot saved')); } }, ...tbLabel('⤓ Image')),
     !UI.share ? null : el('button', { className: 'tb', title: 'Copy a link to exactly this view (includes measurements)', ariaLabel: 'Share this view', onclick: share }, ...tbLabel('↗ Share')),
     !UI.advanced ? null : toggle('⚙', state.advanced, () => { state.advanced = !state.advanced; if (state.advanced) ev('advanced_open'); renderAll(); }, 'Advanced controls'),
@@ -713,14 +710,14 @@ function renderPanel() {
     section('cleaning', 'Cleaning',
       el('div', { className: 'row-label', textContent: 'Noise (classified)' }),
       seg([['show', 'Show'], ['hide', 'Hide'], ['only', 'Only noise']], S.noise, (k) => { S.noise = k; rerender(); }, { disabled: !ds.noiseClassified }),
-      ds.noiseClassified ? null : el('div', { className: 'help', textContent: 'No noise classification in this dataset yet; Clean uses the height band.' }),
+      ds.noiseClassified ? null : el('div', { className: 'help', textContent: 'No noise classification in this dataset yet; cleaning uses the height band.' }),
       slider('Height max', { min: zMin, max: zMax, step: 0.1, value: band[1], fmt: fmtM, onInput: (v) => { S.zBand = [Math.min(band[0], v), v]; band[1] = v; applySettings(); } }),
       slider('Height min', { min: zMin, max: zMax, step: 0.1, value: band[0], fmt: fmtM, onInput: (v) => { S.zBand = [v, Math.max(band[1], v)]; band[0] = v; applySettings(); } }),
       !hasRefl ? null : slider('Refl. min', { min: 0, max: 100, step: 1, value: S.reflFilter[0], onInput: (v) => { S.reflFilter = [v, S.reflFilter[1]]; applySettings(); }, title: 'Hide low-reflectivity points (dust, rain, edge speckle)' }),
       !hasRefl ? null : slider('Refl. max', { min: 1, max: 255, step: 1, value: S.reflFilter[1], onInput: (v) => { S.reflFilter = [S.reflFilter[0], v]; applySettings(); }, title: 'Hide high-reflectivity points (retroreflector blooming)' }),
       !ds.speckle ? null : slider('Speckle', { min: 0, max: 100, step: 1, value: S.speckle, fmt: (v) => (v ? v + '%' : 'off'), onInput: (v) => { S.speckle = v; applySettings(); }, title: 'Hide points whose color is much brighter than their surroundings (mis-colored edges, glints)' }),
       !ds.skyFilter ? null : slider('Sky fringe', { min: 0, max: 100, step: 1, value: S.skyCut, fmt: (v) => (v ? v + '%' : 'off'), onInput: (v) => { S.skyCut = v; applySettings(); }, title: 'Hide points on tree/roof edges that picked up sky color during colorization' }),
-      el('button', { className: 'link', textContent: 'Reset cleaning', onclick: () => { S.reflFilter = [0, 255]; setClean(false); } }),
+      el('button', { className: 'link', textContent: 'Reset cleaning', onclick: () => { S.reflFilter = [0, 255]; applyClean(); } }),
     ),
     section('lighting', 'Lighting',
       seg([[true, 'EDL on'], [false, 'EDL off']], S.edl, (k) => { S.edl = k; rerender(); }),
@@ -736,7 +733,7 @@ function renderPanel() {
         const keep = { nav: S.nav, colorKey: S.colorKey };
         Object.assign(S, structuredClone(DEFAULTS), keep);
         S.budgetM = budgetFor(activeDs()); ab.on = true; ab.ceiling = BUDGET_CAP; ab.ceilingUntil = 0;
-        setClean(true);
+        applyClean();
       } }),
     ),
   );
