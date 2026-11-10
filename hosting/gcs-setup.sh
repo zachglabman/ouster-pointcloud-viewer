@@ -4,7 +4,7 @@
 #   sh gcs-setup.sh upload    # upload out/*.copc.laz (all of them)
 #   sh gcs-setup.sh publish F # upload ONE data file F (new name per version: cached 1 year) + range check
 #   sh gcs-setup.sh site      # build the viewer and upload dist/ to gs://$BUCKET/viewer/
-#   sh gcs-setup.sh public    # grant allUsers objectViewer (makes the data world-readable)
+#   sh gcs-setup.sh public    # grant allUsers legacyObjectReader (read, no list) (makes the data world-readable)
 #   sh gcs-setup.sh check     # range-request test (expects 206 + CORS header)
 #   sh gcs-setup.sh teardown  # delete objects and bucket
 set -eu
@@ -57,6 +57,8 @@ case "${1:-}" in
     # hashed assets/: immutable; potree/ vendor bundle: 1 day.
     SITE="${SITE_PREFIX:-viewer}"; DIST="$HERE/../viewer/dist"
     (cd "$HERE/../viewer" && npm run build)
+    # Keep debug/doc files out of the public bucket (gcloud storage cp has no exclude flag; dist/ is rebuilt each run).
+    find "$DIST/potree" \( -name '*.map' -o -iname 'README*' -o -name 'test.html' \) -type f -delete
     # Text files are stored gzip-encoded (browsers decompress transparently): potree.js 2.2 MB -> ~0.5 MB.
     GZ="--gzip-local=js,css,html,json,svg,wasm"
     gcloud storage cp -r "$DIST/potree" "gs://$BUCKET/$SITE/" $GZ --cache-control="public, max-age=86400"
@@ -72,7 +74,7 @@ case "${1:-}" in
     ;;
   public)
     gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
-      --member=allUsers --role=roles/storage.objectViewer
+      --member=allUsers --role=roles/storage.legacyObjectReader   # read objects only; objectViewer would also allow listing
     ;;
   check)
     U="$URL_BASE/${2:-ggp.copc.laz}"

@@ -16,11 +16,11 @@ measure, and share a link to an exact view.
 - Streams [COPC](https://copc.io) files straight from a storage bucket with HTTP range requests: no server,
   and a 13.8 GB cloud opens in seconds because only what's on screen loads.
 - Cleans noisy point clouds without deleting anything: floating noise and mis-colored speckle are
-  *classified*, and the viewer hides them (Clean button), so it's reversible.
+  *classified*, and the viewer always hides them, so it's reversible.
 - Guided tours with captions, measurements (distance, height, area, point), orthographic and X-ray
   views, eye-dome lighting, screenshots, and share links that carry the camera and measurements.
 - **Share** copies a link that reopens the exact view: camera, color mode, measurements, and every display
-  setting you changed (Clean and its sliders, X-ray, orthographic, eye-dome lighting, point size, FOV, ...).
+  setting you changed (cleaning sliders, X-ray, orthographic, eye-dome lighting, point size, FOV, ...).
 - Built on [Potree 1.8.2](https://github.com/potree/potree) (WebGL) and [Vite](https://vitejs.dev).
 
 ---
@@ -178,8 +178,8 @@ modes, **N** noise show/hide/only, **P** copy camera JSON, **Esc** cancel, **⌘
 
 ## Cleaning
 
-`clean/clean_cloud.py` classifies, never deletes. The viewer's **Clean** button and the Advanced →
-Cleaning sliders decide what's hidden.
+`clean/clean_cloud.py` classifies, never deletes. The viewer always applies the dataset's clean preset;
+the Advanced → Cleaning sliders fine-tune what's hidden.
 
 | Class | Defect | Detector |
 |---|---|---|
@@ -219,8 +219,8 @@ Set `VITE_GA4_ID` (and/or `VITE_GTM_ID`) in `viewer/.env` and redeploy. Every ev
 - 24 parallel downloads (measured best), a 4 px cap on point size (no blobs while detail streams in), a
   "Refining detail…" indicator, and adaptive render resolution (up to 2× on desktop, 1.5× on phones).
 - Merging adjacent chunk requests was tried and dropped: requests merged only 0–30% in typical views.
-- `hosting/cdn-setup.sh` puts Cloud CDN and a custom domain in front of the bucket (about $18/month).
-  It's optional and not in use.
+- Production runs behind Cloud CDN on viewer.ouster.com (load balancer + backend bucket). See
+  [hosting/INFRA.md](hosting/INFRA.md) for the live setup and its security settings.
 
 ## Project layout
 
@@ -229,7 +229,8 @@ clean/clean_cloud.py      clean + convert any LAS/LAZ/COPC/PLY to COPC (+ datase
 clean/speckle.py          the color-speckle score
 clean/run_ggp.py          the original Golden Gate Park run (kept for reference)
 hosting/gcs-setup.sh      bucket, publish data, deploy site, range-request check   (settings: hosting/.env)
-hosting/cdn-setup.sh      optional Cloud CDN + custom domain
+hosting/cdn-setup.sh      template for Cloud CDN + custom domain (the live setup is in hosting/INFRA.md)
+hosting/INFRA.md          live infrastructure: load balancer, CDN, headers, CORS, IAM, monitoring
 viewer/index.html         page shell, link-preview tags
 viewer/src/main.js        settings, toolbar, panels, share links, keys, loading
 viewer/src/tour.js        guided tour

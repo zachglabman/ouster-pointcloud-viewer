@@ -1,6 +1,6 @@
 [
   {
-    "origin": ["*"],
+    "origin": ["https://viewer.ouster.com"],
     "method": ["GET", "HEAD"],
     "responseHeader": ["Range", "Content-Range", "Accept-Ranges", "Content-Length", "ETag", "Content-Type"],
     "maxAgeSeconds": 86400
