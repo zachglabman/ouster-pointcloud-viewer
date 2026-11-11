@@ -794,6 +794,20 @@ new ResizeObserver(setBottomH).observe($('#bottom'));
   });
 }
 
+// ---------- scroll wheel -> Potree ----------
+// Potree 1.8.2 listens for the legacy 'mousewheel' / 'DOMMouseScroll' events. Browsers skip the legacy
+// event when the page has any standard 'wheel' listener (we do: auto-orbit stop, tour stop, zoom-to-cursor),
+// so the scroll never reached the orbit controls. Feed Potree from 'wheel' and swallow the legacy events
+// (on an ancestor, in capture) so browsers that still send them don't zoom twice.
+{
+  const ih = viewer.inputHandler, el = viewer.renderer.domElement, area = $('#potree_render_area');
+  for (const t of ['mousewheel', 'DOMMouseScroll']) area.addEventListener(t, (e) => e.stopPropagation(), { capture: true });
+  el.addEventListener('wheel', (e) => {
+    if (!e.deltaY) return;
+    ih.onMouseWheel({ wheelDelta: -Math.sign(e.deltaY), preventDefault: () => e.preventDefault() });
+  }, { passive: false });
+}
+
 // ---------- orbit and zoom around the point under the cursor ----------
 // Potree's orbit controls always turn and zoom about the screen centre. Pick the cloud point under the
 // cursor when a left-drag starts or the wheel turns, then apply the same yaw/pitch/zoom as a rigid motion
