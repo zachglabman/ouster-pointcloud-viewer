@@ -46,16 +46,27 @@ Classic global external Application Load Balancer (`EXTERNAL` scheme), backend b
     `style-src 'unsafe-inline'` (jQuery), `frame-ancestors 'self' https://ouster.com https://*.ouster.com`.
     It's report-only until it has been tested through the CDN, then it will be enforced. If
     `viewer/index.html`'s inline script changes, update the hash.
-- **Not used:** Cloud Armor. Backend buckets only support edge policies (allow/deny on IP, region, path,
+- **Cloud Armor:** only the kill switch edge policy `pcv-killswitch` (default rule deny 403), which is
+  normally **not attached**. Backend buckets only support edge policies (allow/deny on IP, region, path,
   headers), with no rate limiting or WAF.
 
 ## IAM
 
-- **Project roles:** Owners only (two people), plus Google-managed service agents. No user-managed
-  service account has project roles.
+- **Project roles:** Owners only (two people), plus Google-managed service agents and the two kill switch
+  service accounts below.
+- **`pcv-killswitch`** (runs the kill switch function): custom role `pcvKillswitchCompute` on the project
+  (get backend bucket, set its edge policy, use security policies, read operations),
+  `serviceusage.serviceUsageConsumer`, custom role `pcvKillswitchBucket` on the viewer bucket only (get
+  bucket, read/set its IAM policy), and `run.invoker` on the function's own Cloud Run service.
+- **`pcv-killswitch-build`** (builds the function): `cloudbuild.builds.builder` only.
+- **Monitoring notification agent:** `pubsub.publisher` on topic `pcv-egress-killswitch` only.
 - **Logging:** load balancer request logs are always on for backend buckets.
 - **Alert:** "Point cloud viewer: egress > 500 GB/day" (Cloud Monitoring) emails the owner when load
   balancer or bucket egress passes 500 GB in a day.
+- **Kill switch:** "Point cloud viewer: egress HARD CEILING 20 TB/day (kill switch)" emails the owner and
+  publishes to Pub/Sub `pcv-egress-killswitch`, which triggers Cloud Function `pcv-killswitch` (us-west1,
+  gen2, internal ingress, no unauthenticated access). On an open incident it attaches `pcv-killswitch` to
+  `pcv-backend` and removes `allUsers` from the bucket. Recovery is manual: `killswitch/README.md`.
 
 ## Known exposure
 
@@ -64,4 +75,9 @@ Classic global external Application Load Balancer (`EXTERNAL` scheme), backend b
   viewer.ouster.com. After that, the plan is to make the bucket private and grant read to the load
   balancer's service agent (`service-<project number>@https-lb.iam.gserviceaccount.com`).
 - **Egress cost:** anyone can download the 13.8 GB cloud repeatedly, and there's no rate limit. The
-  egress alert reports it but doesn't block it.
+  500 GB/day alert only emails; the kill switch blocks all traffic at 20 TB/day. Metrics lag a few
+  minutes, so it caps the damage rather than stopping it instantly.
+- **Viewer still loads data from the bucket URL:** `viewer/public/datasets.json` points at
+  storage.googleapis.com, so today's traffic skips the CDN. viewer.ouster.com has no DNS record yet
+  (ISD-43918, in security review). Once it resolves, point the dataset URL at `/pointclouds/...`,
+  deploy, then make the bucket private.
