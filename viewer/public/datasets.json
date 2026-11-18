@@ -4,7 +4,7 @@
     {
       "id": "ggp",
       "name": "Golden Gate Park",
-      "url": "https://storage.googleapis.com/ouster-pointcloud-viewer/pointclouds/ggp-v2.copc.laz",
+      "url": "/pointclouds/ggp-v2.copc.laz",
       "studioUrl": "https://studio.ouster.com/share/WSRA82WX8Q72X8LA?utm_source=ouster-viz",
       "thumbnail": "thumbs/ggp.jpg",
       "title": "Golden Gate Park",

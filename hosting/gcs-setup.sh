@@ -15,7 +15,9 @@ PROJECT="${PROJECT:?set PROJECT in hosting/.env (your Google Cloud project ID)}"
 BUCKET="${BUCKET:?set BUCKET in hosting/.env (a globally unique bucket name)}"
 REGION="${REGION:-us-west1}"
 PREFIX="${PREFIX:-pointclouds}"
-URL_BASE="https://storage.googleapis.com/$BUCKET/$PREFIX"
+# Public origin (load balancer + CDN in front of the bucket; see INFRA.md).
+SITE_HOST="${SITE_HOST:-https://viewer.ouster.com}"
+URL_BASE="$SITE_HOST/$PREFIX"
 
 case "${1:-}" in
   bucket)
@@ -49,7 +51,7 @@ case "${1:-}" in
     L=$(stat -f %z "$F"); R=$(gcloud storage ls -l "gs://$BUCKET/$PREFIX/$N" | awk 'NR==1{print $1}')
     [ "$L" = "$R" ] && echo "size OK ($L bytes)" || { echo "SIZE MISMATCH local $L remote $R"; exit 1; }
     sh "$0" check "$N"
-    echo "url: $URL_BASE/$N"
+    echo "datasets.json url: /$PREFIX/$N   (live: $URL_BASE/$N)"
     ;;
   site)
     # Viewer: build, then upload dist/ to gs://$BUCKET/viewer/.
@@ -70,7 +72,7 @@ case "${1:-}" in
       --content-type=application/vnd.laszip+copc --cache-control="public, max-age=86400"
     [ -f "$DIST/og.jpg" ] && gcloud storage cp "$DIST/og.jpg" "gs://$BUCKET/$SITE/og.jpg" --cache-control="public, max-age=86400"
     [ -d "$DIST/thumbs" ] && gcloud storage cp -r "$DIST/thumbs" "gs://$BUCKET/$SITE/" --cache-control="public, max-age=3600"
-    echo "Live: https://storage.googleapis.com/$BUCKET/$SITE/index.html"
+    echo "Live: $SITE_HOST/$SITE/index.html"
     ;;
   public)
     gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
@@ -78,7 +80,7 @@ case "${1:-}" in
     ;;
   check)
     U="$URL_BASE/${2:-ggp.copc.laz}"
-    curl -s -o /dev/null -D - -r 0-999 -H "Origin: https://example.com" "$U" \
+    curl -s -o /dev/null -D - -r 0-999 -H "Origin: $SITE_HOST" "$U" \
       | grep -iE "^HTTP|content-range|content-length|accept-ranges|access-control"
     ;;
   teardown)

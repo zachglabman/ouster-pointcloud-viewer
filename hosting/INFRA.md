@@ -6,7 +6,7 @@ and is kept as a template.
 
 ```
 browser ──DNS (Cloudflare, DNS only)──▶ 34.96.125.236  (pcv-ip, global static IP)
-  :443  pcv-https (forwarding rule) ─▶ pcv-proxy (HTTPS proxy, cert pcv-cert) ─▶ pcv-urlmap ─▶ pcv-backend ─▶ gs://ouster-pointcloud-viewer
+  :443  pcv-https (forwarding rule) ─▶ pcv-proxy (HTTPS proxy, cert pcv-cert-2) ─▶ pcv-urlmap ─▶ pcv-backend ─▶ gs://ouster-pointcloud-viewer
   :80   pcv-http  (forwarding rule) ─▶ pcv-http-proxy ─▶ pcv-http-redirect (301 to https://viewer.ouster.com)
 ```
 
@@ -21,8 +21,10 @@ Classic global external Application Load Balancer (`EXTERNAL` scheme), backend b
 | `viewer/potree/` | Potree 1.8.2 bundle (open source) | 1 day |
 | `pointclouds/ggp-v2.copc.laz` | the 13.8 GB point cloud, streamed with Range requests | 1 year, immutable |
 
-- **Access:** uniform bucket-level access. `allUsers` has `roles/storage.legacyObjectReader`, which lets
-  anyone read objects but not list, write or delete. Only project Owners can write.
+- **Access:** uniform bucket-level access, **private** since 2026-11-18. Only the load balancer reads it:
+  `service-874867146464@https-lb.iam.gserviceaccount.com` has `roles/storage.objectViewer` (Cloud CDN private
+  bucket access; this account does the cache fills). Direct storage.googleapis.com URLs return 403. Only
+  project Owners can write. Do not run `gcs-setup.sh public`.
 - **CORS:** GET/HEAD from `https://viewer.ouster.com` only, Range allowed (`gcs-cors.json`).
 - **Deploys:** `sh hosting/gcs-setup.sh site`, run by an Owner. Nothing in CI deploys; GitHub Actions
   only builds and lints.
@@ -32,7 +34,8 @@ Classic global external Application Load Balancer (`EXTERNAL` scheme), backend b
 - **Host rule (`pcv-urlmap`):** only `viewer.ouster.com` is served. Any other Host header, including the
   raw IP, gets a 301 to `https://viewer.ouster.com`. `/` and `/viewer/` redirect to `/viewer/index.html`.
 - **HTTPS only:** port 80 returns a 301 to `https://viewer.ouster.com`.
-- **Certificate:** Google-managed `pcv-cert`. Issuance requires viewer.ouster.com to resolve directly to
+- **Certificate:** Google-managed `pcv-cert-2` (active 2026-11-18, auto-renews). The first cert, `pcv-cert`, was
+  created before DNS existed and stuck at `FAILED_NOT_VISIBLE`; replacing it fixed that. `pcv-cert` was deleted. Issuance requires viewer.ouster.com to resolve directly to
   34.96.125.236, so the Cloudflare record must be DNS only (not proxied).
 - **CDN (`pcv-backend`):** `CACHE_ALL_STATIC`, honoring each object's Cache-Control. The default backend
   bucket cache key ignores query strings Cloud Storage doesn't use, so `?anything=` can't bypass the cache.
@@ -70,14 +73,11 @@ Classic global external Application Load Balancer (`EXTERNAL` scheme), backend b
 
 ## Known exposure
 
-- **Direct bucket URLs:** `https://storage.googleapis.com/ouster-pointcloud-viewer/...` still works and
-  skips the CDN, the response headers and the host rule. It stays public until the site has moved to
-  viewer.ouster.com. After that, the plan is to make the bucket private and grant read to the load
-  balancer's service agent (`service-<project number>@https-lb.iam.gserviceaccount.com`).
+- **Direct bucket URLs:** closed 2026-11-18 (bucket private, 403). All traffic now goes through the load
+  balancer, CDN, response headers and host rule.
 - **Egress cost:** anyone can download the 13.8 GB cloud repeatedly, and there's no rate limit. The
   500 GB/day alert only emails; the kill switch blocks all traffic at 20 TB/day. Metrics lag a few
   minutes, so it caps the damage rather than stopping it instantly.
-- **Viewer still loads data from the bucket URL:** `viewer/public/datasets.json` points at
-  storage.googleapis.com, so today's traffic skips the CDN. viewer.ouster.com has no DNS record yet
-  (ISD-43918, in security review). Once it resolves, point the dataset URL at `/pointclouds/...`,
-  deploy, then make the bucket private.
+- **Live on viewer.ouster.com (2026-11-18):** DNS added by IT (ISD-43918). The viewer and the point cloud
+  (`/pointclouds/ggp-v2.copc.laz`, same origin) are served through the load balancer and CDN; verified in a
+  browser. The old storage.googleapis.com URLs return 403.

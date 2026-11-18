@@ -3,7 +3,7 @@
 Explore billion-point Ouster lidar captures in the browser: stream them, clean them, fly a guided tour,
 measure, and share a link to an exact view.
 
-**Live:** https://storage.googleapis.com/ouster-pointcloud-viewer/viewer/index.html
+**Live:** https://viewer.ouster.com
 
 ![Golden Gate Park in the viewer](viewer/public/og.jpg)
 
